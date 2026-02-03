@@ -27,14 +27,14 @@ const sendCredentials = async (email, password) => {
     const transporter = getTransporter();
 
     const mailOptions = {
-        from: process.env.EMAIL_FROM || '"Unbounded Wealth" <no-reply@unboundedwealth.com>',
+        from: process.env.EMAIL_FROM || '"Swamp Deer" <no-reply@unboundedwealth.com>',
         to: email,
         subject: 'Your New Account Credentials',
         html: `
             <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-                <h2 style="color: #004225; text-align: center;">Welcome to Unbounded Wealth</h2>
+                <h2 style="color: #004225; text-align: center;">Welcome to Swamp Deer</h2>
                 <p>Hello,</p>
-                <p>An administrator has created a new account for you on the Unbounded Wealth Management System.</p>
+                <p>An administrator has created a new account for you on the Swamp Deer Management System.</p>
                 <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0;">
                     <p style="margin: 5px 0;"><strong>System Access Details:</strong></p>
                     <p style="margin: 5px 0;"><strong>Identity:</strong> ${email}</p>

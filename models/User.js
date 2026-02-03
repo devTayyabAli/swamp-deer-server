@@ -44,6 +44,14 @@ const userSchema = mongoose.Schema({
         enum: ['active', 'banned'],
         default: 'active'
     },
+    profitRate: {
+        type: Number,
+        default: 0.05 // Default 5%
+    },
+    commissionRate: {
+        type: Number,
+        default: 0.05 // Default 5%
+    },
     resetPasswordToken: String,
     resetPasswordExpires: Date
 }, {

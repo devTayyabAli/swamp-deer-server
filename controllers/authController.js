@@ -67,7 +67,9 @@ const registerUser = async (req, res) => {
             phone,
             address,
             upline,
-            productStatus: productStatus || 'without_product'
+            productStatus: productStatus || 'without_product',
+            profitRate: req.body.profitRate || (productStatus === 'with_product' ? 0.05 : 0.07),
+            commissionRate: req.body.commissionRate || 0.05
         };
 
         if (branch) {
@@ -105,7 +107,7 @@ const authAdmin = async (req, res) => {
 
     // Hardcoded Admin Check (Temporary)
     if (email === 'tayyabarine@gmail.com' && password === '1234') {
-         return res.json({
+        return res.json({
             _id: '5f8d0d55b54764421b7156c9', // Valid 24-char hex ObjectId
             name: 'Hardcoded Admin',
             email: 'tayyabarine@gmail.com',
@@ -323,6 +325,11 @@ const updateUser = async (req, res) => {
             user.email = req.body.email || user.email;
             user.role = req.body.role || user.role;
             user.branchId = req.body.branchId || user.branchId;
+            user.phone = req.body.phone || user.phone;
+            user.address = req.body.address || user.address;
+            user.productStatus = req.body.productStatus || user.productStatus;
+            user.profitRate = req.body.profitRate !== undefined ? req.body.profitRate : user.profitRate;
+            user.commissionRate = req.body.commissionRate !== undefined ? req.body.commissionRate : user.commissionRate;
 
             const updatedUser = await user.save();
             const populatedUser = await User.findById(updatedUser._id).populate('branchId', 'name city');
@@ -343,14 +350,14 @@ const updateUser = async (req, res) => {
     }
 };
 
-module.exports = { 
-    authUser, 
-    registerUser, 
-    authAdmin, 
-    getUsers, 
-    updateUserProfile, 
-    updateUserPassword, 
-    forgotPassword, 
+module.exports = {
+    authUser,
+    registerUser,
+    authAdmin,
+    getUsers,
+    updateUserProfile,
+    updateUserPassword,
+    forgotPassword,
     resetPassword,
     updateUserStatus,
     updateUser

@@ -38,14 +38,32 @@ const getInvestors = async (req, res) => {
             },
             {
                 $addFields: {
-                    fullName: '$name', // Map name to fullName for frontend compatibility
-                    amountInvested: { $sum: '$investments.amount' },
-                    // Calculate total reward: sum existing investorProfit, 
-                    // or fallback to 10% of amount for legacy records
+                    fullName: '$name',
+                    amountInvested: {
+                        $sum: {
+                            $map: {
+                                input: {
+                                    $filter: {
+                                        input: '$investments',
+                                        as: 's',
+                                        cond: { $eq: ['$$s.status', 'completed'] }
+                                    }
+                                },
+                                as: 'sale',
+                                in: '$$sale.amount'
+                            }
+                        }
+                    },
                     totalReward: {
                         $sum: {
                             $map: {
-                                input: '$investments',
+                                input: {
+                                    $filter: {
+                                        input: '$investments',
+                                        as: 's',
+                                        cond: { $eq: ['$$s.status', 'completed'] }
+                                    }
+                                },
                                 as: 'sale',
                                 in: { $ifNull: ['$$sale.investorProfit', { $multiply: ['$$sale.amount', 0.1] }] }
                             }
@@ -69,11 +87,31 @@ const getInvestors = async (req, res) => {
             },
             {
                 $addFields: {
-                    investorTotalAmt: { $sum: '$investments.amount' },
+                    investorTotalAmt: {
+                        $sum: {
+                            $map: {
+                                input: {
+                                    $filter: {
+                                        input: '$investments',
+                                        as: 's',
+                                        cond: { $eq: ['$$s.status', 'completed'] }
+                                    }
+                                },
+                                as: 'sale',
+                                in: '$$sale.amount'
+                            }
+                        }
+                    },
                     investorTotalReward: {
                         $sum: {
                             $map: {
-                                input: '$investments',
+                                input: {
+                                    $filter: {
+                                        input: '$investments',
+                                        as: 's',
+                                        cond: { $eq: ['$$s.status', 'completed'] }
+                                    }
+                                },
                                 as: 'sale',
                                 in: { $ifNull: ['$$sale.investorProfit', { $multiply: ['$$sale.amount', 0.1] }] }
                             }
@@ -98,8 +136,8 @@ const getInvestors = async (req, res) => {
             const results = await User.aggregate(aggregation);
             // Manually populate upline after aggregation because $lookup with ref is complex
             const populatedResults = await User.populate(results, { path: 'upline', select: 'name phone' });
-            res.json({ 
-                items: populatedResults.map(r => ({ ...r, fullName: r.name })), 
+            res.json({
+                items: populatedResults.map(r => ({ ...r, fullName: r.name })),
                 total: populatedResults.length,
                 totalAmountInvested: totals.totalAmountInvested,
                 totalRewardPaid: totals.totalRewardPaid
@@ -193,7 +231,7 @@ const createInvestor = async (req, res) => {
     if (user) {
         // Send email with credentials
         await sendCredentials(user.email, generatedPassword);
-        
+
         res.status(201).json({ ...user.toObject(), fullName: user.name });
     } else {
         res.status(400).json({ message: 'Invalid entity data' });
@@ -253,11 +291,31 @@ const getPartnerProfileWithStats = async (req, res) => {
             },
             {
                 $addFields: {
-                    amountInvested: { $sum: '$investments.amount' },
+                    amountInvested: {
+                        $sum: {
+                            $map: {
+                                input: {
+                                    $filter: {
+                                        input: '$investments',
+                                        as: 's',
+                                        cond: { $eq: ['$$s.status', 'completed'] }
+                                    }
+                                },
+                                as: 'sale',
+                                in: '$$sale.amount'
+                            }
+                        }
+                    },
                     totalReward: {
                         $sum: {
                             $map: {
-                                input: '$investments',
+                                input: {
+                                    $filter: {
+                                        input: '$investments',
+                                        as: 's',
+                                        cond: { $eq: ['$$s.status', 'completed'] }
+                                    }
+                                },
                                 as: 'sale',
                                 in: { $ifNull: ['$$sale.investorProfit', { $multiply: ['$$sale.amount', 0.1] }] }
                             }
