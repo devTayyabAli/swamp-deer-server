@@ -16,7 +16,7 @@ const getSales = async (req, res) => {
     const { branchId, startDate, endDate, status } = req.query;
 
     const query = {};
-    
+
     // Role-based filtering
     if (req.user.role === 'super_admin') {
         if (branchId && !['all branches', 'undefined', 'null'].includes(branchId.toLowerCase())) {
@@ -49,7 +49,29 @@ const getSales = async (req, res) => {
     }
 
     const count = await Sale.countDocuments(query);
-    
+
+    // Calculate aggregate totals for the filtered query (excluding rejected sales)
+    const statsQuery = { ...query };
+    if (!statsQuery.status) {
+        statsQuery.status = { $ne: 'rejected' };
+    }
+
+    const stats = await Sale.aggregate([
+        { $match: statsQuery },
+        {
+            $group: {
+                _id: null,
+                totalAmount: { $sum: '$amount' },
+                totalProfit: { $sum: { $subtract: ['$amount', '$commission'] } }
+            }
+        }
+    ]);
+
+    const summary = stats.length > 0 ? {
+        totalAmount: stats[0].totalAmount,
+        totalProfit: stats[0].totalProfit
+    } : { totalAmount: 0, totalProfit: 0 };
+
     // If admin, show all. If user, show only theirs (logic can be extended)
     const sales = await Sale.find(query)
         .populate('user', 'id name')
@@ -72,7 +94,8 @@ const getSales = async (req, res) => {
         items: mappedSales,
         page,
         pages: Math.ceil(count / limit),
-        total: count
+        total: count,
+        summary
     });
 };
 
@@ -133,7 +156,7 @@ const createSale = async (req, res) => {
 const updateSaleStatus = async (req, res) => {
     try {
         const { status } = req.body;
-        
+
         if (!['pending', 'completed', 'rejected'].includes(status)) {
             return res.status(400).json({ message: 'Invalid status' });
         }

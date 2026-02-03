@@ -22,27 +22,32 @@ if (!fs.existsSync(uploadsDir)) {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-
+app.use(cors({
+    credentials: true,
+    origin: '*',
+}));
 
 // Middleware
-const allowedOrigins = [
-    'https://admin.swampdeer.cloud',
-    'https://sale.swampdeer.cloud',
+// const allowedOrigins = [
+//     // 'https://admin.swampdeer.cloud',
+//     // 'https://sale.swampdeer.cloud',
+//     'http://localhost:5173',
+//     'http://localhost:5174'
 
-];
+// ];
 
-app.use(cors({
-    origin: function (origin, callback) {
-        // Allow requests with no origin (like Postman or server-to-server)
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.indexOf(origin) !== -1) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
-    },
-    credentials: true, // allow cookies/auth headers
-}));
+// app.use(cors({
+//     origin: function (origin, callback) {
+//         // Allow requests with no origin (like Postman or server-to-server)
+//         if (!origin) return callback(null, true);
+//         if (allowedOrigins.indexOf(origin) !== -1) {
+//             callback(null, true);
+//         } else {
+//             callback(new Error('Not allowed by CORS'));
+//         }
+//     },
+//     credentials: true, // allow cookies/auth headers
+// }));
 
 app.use(express.json());
 
