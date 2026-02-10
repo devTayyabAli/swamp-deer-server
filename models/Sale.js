@@ -25,7 +25,7 @@ const saleSchema = mongoose.Schema({
     },
     description: {
         type: String,
-        required: true
+        required: false
     },
     amount: {
         type: Number,
@@ -37,7 +37,13 @@ const saleSchema = mongoose.Schema({
     },
     investorProfit: {
         type: Number,
-        required: true
+        required: false
+    },
+    receiptPath: {
+        type: String,
+    },
+    documentPath: {
+        type: String,
     },
     date: {
         type: Date,

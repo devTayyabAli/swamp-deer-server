@@ -104,10 +104,16 @@ const getSales = async (req, res) => {
 // @route   POST /api/sales
 // @access  Private
 const createSale = async (req, res) => {
-    const { description, amount, commission, investorProfit, paymentMethod, productStatus } = req.body;
+    const { amount, paymentMethod, productStatus } = req.body;
+    let { description, commission, investorProfit } = req.body;
 
-    if (!description || !amount || investorProfit === undefined || !paymentMethod) {
-        return res.status(400).json({ message: 'Please fill in all required fields' });
+    // Use defaults if fields are missing (from simplified form)
+    if (!description) description = `Investment via ${paymentMethod}`;
+    if (investorProfit === undefined) investorProfit = 0.05; // Default 5%
+    if (commission === undefined) commission = Math.round(Number(amount) * 0.05); // Default 5%
+
+    if (!amount || !paymentMethod) {
+        return res.status(400).json({ message: 'Amount and Payment Method are required' });
     }
 
     const sale = await Sale.create({
@@ -121,7 +127,8 @@ const createSale = async (req, res) => {
         commission,
         investorProfit,
         paymentMethod,
-        productStatus: productStatus || 'without_product'
+        productStatus: productStatus || 'without_product',
+        receiptPath: req.file ? `uploads/receipts/${req.file.filename}` : null
     });
 
     if (sale) {
