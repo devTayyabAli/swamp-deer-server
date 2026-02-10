@@ -8,31 +8,80 @@ const generateToken = (id) => {
     });
 };
 
+const ResponseHelper = require('../utils/ResponseHelper');
+
 // @desc    Auth user & get token
 // @route   POST /api/auth/login
 // @access  Public
 const authUser = async (req, res) => {
-    const { email, password } = req.body;
+    let response = ResponseHelper.getResponse(false, "Something went wrong", {}, 400);
+    try {
+        const { email, password } = req.body; // identifier can be email or userName
 
-    const user = await User.findOne({ email }).populate('branchId', 'name city');
+        console.log('=== LOGIN DEBUG ===');
+        console.log('Identifier:', email);
+        console.log('Password provided:', password);
+        console.log('Password length:', password?.length);
 
-    if (user && (await user.matchPassword(password))) {
-        if (user.status === 'banned') {
-            res.status(403).json({ message: 'Your account has been banned. Please contact admin.' });
-            return;
+        const user = await User.findOne({
+            $or: [
+                { email: email },
+                { userName: email }
+            ]
+        }).populate('branchId', 'name city');
+
+
+        console.log('User found:', user);
+        if (user) {
+            console.log('User email:', user.email);
+            console.log('User userName:', user.userName);
+            console.log('Password hash exists:', user.password ? 'Yes' : 'No');
+            console.log('Password hash starts with:', user.password?.substring(0, 10));
+            console.log('Password hash length:', user.password?.length);
         }
 
-        res.json({
-            _id: user._id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            phone: user.phone,
-            branchId: user.branchId,
-            token: generateToken(user._id),
-        });
-    } else {
-        res.status(401).json({ message: 'Invalid email or password' });
+        if (user) {
+            console.log('Attempting password match...');
+            const passwordMatch = await user.matchPassword(password);
+            console.log('Password match result:', passwordMatch);
+
+            if (passwordMatch) {
+                if (user.status === 'banned') {
+                    response.message = 'Your account has been banned. Please contact admin.';
+                    response.status = 403;
+                    return res.status(response.status).json(response);
+                }
+
+                response.success = true;
+                response.message = 'Logged in successfully';
+                response.status = 200;
+                response.data = {
+                    _id: user._id,
+                    name: user.name,
+                    userName: user.userName,
+                    email: user.email,
+                    role: user.role,
+                    phone: user.phone,
+                    branchId: user.branchId,
+                    token: generateToken(user._id),
+                };
+            } else {
+                console.log('❌ Password mismatch');
+                response.message = 'Invalid credentials';
+                response.status = 401;
+            }
+        } else {
+            console.log('❌ User not found');
+            response.message = 'Invalid credentials';
+            response.status = 401;
+        }
+        console.log('=== END DEBUG ===\n');
+    } catch (error) {
+        console.error('Login Error:', error);
+        response.message = error.message || 'Server Error during login';
+        response.status = 500;
+    } finally {
+        return res.status(response.status).json(response);
     }
 };
 
@@ -40,36 +89,50 @@ const { sendCredentials } = require('../utils/emailService');
 
 // @desc    Register a new user
 // @route   POST /api/auth/register
-// @access  Public (or Admin only depending on logic)
+// @access  Public
 const registerUser = async (req, res) => {
+    let response = ResponseHelper.getResponse(false, "Something went wrong", {}, 400);
     try {
-        let { name, firstName, lastName, email, role, branch, phone, address, upline, productStatus } = req.body;
+        let { name, firstName, lastName, email, userName, role, branch, phone, address, upline, password } = req.body;
 
         // Construct name if missing but first/last provided
         if (!name && firstName && lastName) {
             name = `${firstName} ${lastName}`;
         }
 
-        const userExists = await User.findOne({ email });
+        const userExists = await User.findOne({
+            $or: [
+                { email },
+                { userName }
+            ]
+        });
 
         if (userExists) {
-            return res.status(400).json({ message: 'User already exists' });
+            response.message = `User with this ${userExists.email === email ? 'email' : 'userName'} already exists`;
+            return res.status(400).json(response);
         }
 
         // Generate random password (8 chars) if none provided
-        const generatedPassword = req.body.password || Math.random().toString(36).slice(-8);
+        const finalPassword = password || Math.random().toString(36).slice(-8);
+
+        // Resolve upline userName to ObjectId if provided
+        let uplineId = null;
+        if (upline) {
+            const uplineUser = await User.findOne({ userName: upline });
+            if (uplineUser) {
+                uplineId = uplineUser._id;
+            }
+        }
 
         const userData = {
             name,
             email,
-            password: generatedPassword,
+            userName,
+            password: finalPassword,
             role: role || 'sales_rep',
             phone,
             address,
-            upline,
-            productStatus: productStatus || 'without_product',
-            profitRate: req.body.profitRate || (productStatus === 'with_product' ? 0.05 : 0.07),
-            commissionRate: req.body.commissionRate || 0.05
+            upline: uplineId
         };
 
         if (branch) {
@@ -79,67 +142,97 @@ const registerUser = async (req, res) => {
         const user = await User.create(userData);
 
         if (user) {
+            const populatedUser = await User.findById(user._id).populate('branchId', 'name city');
             // Send email with credentials (only if generated)
-            if (!req.body.password) {
-                await sendCredentials(user.email, generatedPassword);
+            if (!password) {
+                try {
+                    await sendCredentials(user.email, finalPassword);
+                } catch (emailErr) {
+                    console.error('Failed to send credentials email:', emailErr);
+                }
             }
 
-            res.status(201).json({
+            response.success = true;
+            response.message = 'Registration successful';
+            response.status = 201;
+            response.data = {
+                _id: populatedUser._id,
+                name: populatedUser.name,
+                userName: populatedUser.userName,
+                email: populatedUser.email,
+                role: populatedUser.role,
+                phone: populatedUser.phone,
+                branchId: populatedUser.branchId,
+                token: generateToken(populatedUser._id),
+            };
+        } else {
+            response.message = 'Invalid user data';
+        }
+    } catch (error) {
+        console.error('Registration Error:', error);
+        response.message = error.message || 'Server Error during registration';
+        response.status = 500;
+    } finally {
+        return res.status(response.status).json(response);
+    }
+};
+
+const authAdmin = async (req, res) => {
+    let response = ResponseHelper.getResponse(false, "Something went wrong", {}, 400);
+    try {
+        const { identifier, email, password } = req.body;
+        const loginId = identifier || email;
+
+        console.log('=== ADMIN LOGIN DEBUG ===');
+        console.log('Identifier/Email:', loginId);
+        console.log('Password length:', password?.length);
+
+        const user = await User.findOne({
+            $or: [
+                { email: loginId },
+                { userName: loginId }
+            ]
+        }).populate('branchId', 'name city');
+
+        console.log('Admin found:', user ? user.email : 'No');
+        if (user) console.log('Admin role:', user.role);
+
+        if (user && (await user.matchPassword(password))) {
+            if (user.role !== 'super_admin') {
+                response.message = 'Not authorized as admin';
+                response.status = 401;
+                return res.status(response.status).json(response);
+            }
+
+            if (user.status === 'banned') {
+                response.message = 'Your admin account has been suspended.';
+                response.status = 403;
+                return res.status(response.status).json(response);
+            }
+
+            response.success = true;
+            response.message = 'Admin logged in successfully';
+            response.status = 200;
+            response.data = {
                 _id: user._id,
                 name: user.name,
+                userName: user.userName,
                 email: user.email,
                 role: user.role,
                 phone: user.phone,
                 branchId: user.branchId,
                 token: generateToken(user._id),
-            });
+            };
         } else {
-            res.status(400).json({ message: 'Invalid user data' });
+            response.message = 'Invalid email/userName or password';
+            response.status = 401;
         }
     } catch (error) {
-        console.error('Registration Error:', error);
-        res.status(500).json({ message: error.message || 'Server Error during registration' });
-    }
-};
-
-const authAdmin = async (req, res) => {
-    const { email, password } = req.body;
-
-    // Hardcoded Admin Check (Temporary)
-    if (email === 'tayyabarine@gmail.com' && password === '1234') {
-        return res.json({
-            _id: '5f8d0d55b54764421b7156c9', // Valid 24-char hex ObjectId
-            name: 'Hardcoded Admin',
-            email: 'tayyabarine@gmail.com',
-            role: 'super_admin',
-            token: generateToken('5f8d0d55b54764421b7156c9'),
-        });
-    }
-
-    const user = await User.findOne({ email }).populate('branchId', 'name city');
-
-    if (user && (await user.matchPassword(password))) {
-        if (user.role !== 'super_admin') {
-            res.status(401).json({ message: 'Not authorized as admin' });
-            return;
-        }
-
-        if (user.status === 'banned') {
-            res.status(403).json({ message: 'Your admin account has been suspended.' });
-            return;
-        }
-
-        res.json({
-            _id: user._id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            phone: user.phone,
-            branchId: user.branchId,
-            token: generateToken(user._id),
-        });
-    } else {
-        res.status(401).json({ message: 'Invalid email or password' });
+        console.error('Admin Login Error:', error);
+        response.status = 500;
+        response.message = error.message;
+    } finally {
+        return res.status(response.status).json(response);
     }
 };
 
@@ -150,6 +243,7 @@ const { sendResetPasswordEmail } = require('../utils/emailService');
 // @route   PUT /api/auth/profile
 // @access  Private
 const updateUserProfile = async (req, res) => {
+    let response = ResponseHelper.getResponse(false, "Something went wrong", {}, 400);
     try {
         const user = await User.findById(req.user._id);
 
@@ -160,21 +254,29 @@ const updateUserProfile = async (req, res) => {
             const updatedUser = await user.save();
             const populatedUser = await User.findById(updatedUser._id).populate('branchId', 'name city');
 
-            res.json({
+            response.success = true;
+            response.message = 'Profile updated successfully';
+            response.status = 200;
+            response.data = {
                 _id: populatedUser._id,
                 name: populatedUser.name,
+                userName: populatedUser.userName,
                 email: populatedUser.email,
                 role: populatedUser.role,
                 phone: populatedUser.phone,
                 branchId: populatedUser.branchId,
                 token: generateToken(populatedUser._id),
-            });
+            };
         } else {
-            res.status(404).json({ message: 'User not found' });
+            response.message = 'User not found';
+            response.status = 404;
         }
     } catch (error) {
         console.error('Update Profile Error:', error);
-        res.status(500).json({ message: error.message || 'Server Error' });
+        response.message = error.message || 'Server Error';
+        response.status = 500;
+    } finally {
+        return res.status(response.status).json(response);
     }
 };
 
@@ -182,15 +284,27 @@ const updateUserProfile = async (req, res) => {
 // @route   PUT /api/auth/password
 // @access  Private
 const updateUserPassword = async (req, res) => {
-    const { currentPassword, newPassword } = req.body;
-    const user = await User.findById(req.user._id);
+    let response = ResponseHelper.getResponse(false, "Something went wrong", {}, 400);
+    try {
+        const { currentPassword, newPassword } = req.body;
+        const user = await User.findById(req.user._id);
 
-    if (user && (await user.matchPassword(currentPassword))) {
-        user.password = newPassword;
-        await user.save();
-        res.json({ message: 'Password updated successfully' });
-    } else {
-        res.status(401).json({ message: 'Invalid current password' });
+        if (user && (await user.matchPassword(currentPassword))) {
+            user.password = newPassword;
+            await user.save();
+            response.success = true;
+            response.message = 'Password updated successfully';
+            response.status = 200;
+        } else {
+            response.message = 'Invalid current password';
+            response.status = 401;
+        }
+    } catch (error) {
+        console.error('Update Password Error:', error);
+        response.message = error.message;
+        response.status = 500;
+    } finally {
+        return res.status(response.status).json(response);
     }
 };
 
@@ -198,34 +312,48 @@ const updateUserPassword = async (req, res) => {
 // @route   POST /api/auth/forgotpassword
 // @access  Public
 const forgotPassword = async (req, res) => {
-    const { email } = req.body;
-    const user = await User.findOne({ email });
-
-    if (!user) {
-        return res.status(404).json({ message: 'There is no user with that email' });
-    }
-
-    // Get reset token
-    const resetToken = crypto.randomBytes(20).toString('hex');
-
-    // Set reset token and expiry
-    user.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-    user.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
-
-    await user.save();
-
-    // Create reset url
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    const resetUrl = `${frontendUrl}/reset-password/${resetToken}`;
-
+    let response = ResponseHelper.getResponse(false, "Something went wrong", {}, 400);
     try {
-        await sendResetPasswordEmail(user.email, resetUrl);
-        res.status(200).json({ message: 'Email sent' });
-    } catch (err) {
-        user.resetPasswordToken = undefined;
-        user.resetPasswordExpires = undefined;
+        const { email } = req.body;
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            response.message = 'There is no user with that email';
+            response.status = 404;
+            return res.status(response.status).json(response);
+        }
+
+        // Get reset token
+        const resetToken = crypto.randomBytes(20).toString('hex');
+
+        // Set reset token and expiry
+        user.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+        user.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+
         await user.save();
-        res.status(500).json({ message: 'Email could not be sent' });
+
+        // Create reset url
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        const resetUrl = `${frontendUrl}/reset-password/${resetToken}`;
+
+        try {
+            await sendResetPasswordEmail(user.email, resetUrl);
+            response.success = true;
+            response.message = 'Reset password email sent';
+            response.status = 200;
+        } catch (err) {
+            user.resetPasswordToken = undefined;
+            user.resetPasswordExpires = undefined;
+            await user.save();
+            response.message = 'Email could not be sent';
+            response.status = 500;
+        }
+    } catch (error) {
+        console.error('Forgot Password Error:', error);
+        response.message = error.message;
+        response.status = 500;
+    } finally {
+        return res.status(response.status).json(response);
     }
 };
 
@@ -233,49 +361,72 @@ const forgotPassword = async (req, res) => {
 // @route   PUT /api/auth/resetpassword/:resettoken
 // @access  Public
 const resetPassword = async (req, res) => {
-    const resetPasswordToken = crypto.createHash('sha256').update(req.params.resettoken).digest('hex');
+    let response = ResponseHelper.getResponse(false, "Something went wrong", {}, 400);
+    try {
+        const resetPasswordToken = crypto.createHash('sha256').update(req.params.resettoken).digest('hex');
 
-    const user = await User.findOne({
-        resetPasswordToken,
-        resetPasswordExpires: { $gt: Date.now() },
-    });
+        const user = await User.findOne({
+            resetPasswordToken,
+            resetPasswordExpires: { $gt: Date.now() },
+        });
 
-    if (!user) {
-        return res.status(400).json({ message: 'Invalid or expired token' });
+        if (!user) {
+            response.message = 'Invalid or expired token';
+            return res.status(400).json(response);
+        }
+
+        // Set new password
+        user.password = req.body.password;
+        user.resetPasswordToken = undefined;
+        user.resetPasswordExpires = undefined;
+
+        await user.save();
+
+        response.success = true;
+        response.message = 'Password reset successful';
+        response.status = 200;
+        response.data = {
+            _id: user._id,
+            name: user.name,
+            userName: user.userName,
+            email: user.email,
+            role: user.role,
+            token: generateToken(user._id),
+        };
+    } catch (error) {
+        console.error('Reset Password Error:', error);
+        response.message = error.message;
+        response.status = 500;
+    } finally {
+        return res.status(response.status).json(response);
     }
-
-    // Set new password
-    user.password = req.body.password;
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpires = undefined;
-
-    await user.save();
-
-    res.status(200).json({
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        token: generateToken(user._id),
-    });
 };
 
 // @desc    Update user status (ban/unban)
 // @route   PUT /api/auth/users/:id/status
 // @access  Private/Admin
 const updateUserStatus = async (req, res) => {
+    let response = ResponseHelper.getResponse(false, "Something went wrong", {}, 400);
     try {
         const user = await User.findById(req.params.id);
 
         if (user) {
             user.status = user.status === 'active' ? 'banned' : 'active';
             await user.save();
-            res.json({ message: `User ${user.status === 'active' ? 'unbanned' : 'banned'} successfully`, status: user.status });
+            response.success = true;
+            response.message = `User ${user.status === 'active' ? 'unbanned' : 'banned'} successfully`;
+            response.status = 200;
+            response.data = { status: user.status };
         } else {
-            res.status(404).json({ message: 'User not found' });
+            response.message = 'User not found';
+            response.status = 404;
         }
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error('Update Status Error:', error);
+        response.message = error.message;
+        response.status = 500;
+    } finally {
+        return res.status(response.status).json(response);
     }
 };
 
@@ -283,46 +434,63 @@ const updateUserStatus = async (req, res) => {
 // @route   GET /api/auth/users
 // @access  Private/Admin
 const getUsers = async (req, res) => {
-    const pageSize = Number(req.query.limit) || 10;
-    const page = Number(req.query.page) || 1;
-    const roles = req.query.role ? req.query.role.split(',') : [];
+    let response = ResponseHelper.getResponse(false, "Something went wrong", {}, 400);
+    try {
+        const pageSize = Number(req.query.limit) || 10;
+        const page = Number(req.query.page) || 1;
+        const roles = req.query.role ? req.query.role.split(',') : [];
 
-    const query = {};
-    if (roles.length > 0) {
-        query.role = { $in: roles };
+        const query = {};
+        if (roles.length > 0) {
+            query.role = { $in: roles };
+        }
+
+        if (pageSize === -1) {
+            const items = await User.find(query).select('-password').sort({ name: 1 });
+            response.success = true;
+            response.message = 'Users retrieved successfully';
+            response.status = 200;
+            response.data = { items, total: items.length };
+            return res.status(200).json(response);
+        }
+
+        const count = await User.countDocuments(query);
+        const users = await User.find(query)
+            .select('-password')
+            .limit(pageSize)
+            .skip(pageSize * (page - 1))
+            .sort({ createdAt: -1 });
+
+        response.success = true;
+        response.message = 'Users retrieved successfully';
+        response.status = 200;
+        response.data = {
+            items: users,
+            page,
+            pages: Math.ceil(count / pageSize),
+            total: count
+        };
+    } catch (error) {
+        console.error('Get Users Error:', error);
+        response.message = error.message;
+        response.status = 500;
+    } finally {
+        return res.status(response.status).json(response);
     }
-
-    if (pageSize === -1) {
-        const items = await User.find(query).select('-password').sort({ name: 1 });
-        res.json({ items, total: items.length });
-        return;
-    }
-
-    const count = await User.countDocuments(query);
-    const users = await User.find(query)
-        .select('-password')
-        .limit(pageSize)
-        .skip(pageSize * (page - 1))
-        .sort({ createdAt: -1 });
-
-    res.json({
-        items: users,
-        page,
-        pages: Math.ceil(count / pageSize),
-        total: count
-    });
 };
 
 // @desc    Update user (Admin only)
 // @route   PUT /api/auth/users/:id
 // @access  Private/Admin
 const updateUser = async (req, res) => {
+    let response = ResponseHelper.getResponse(false, "Something went wrong", {}, 400);
     try {
         const user = await User.findById(req.params.id);
 
         if (user) {
             user.name = req.body.name || user.name;
             user.email = req.body.email || user.email;
+            user.userName = req.body.userName || user.userName;
             user.role = req.body.role || user.role;
             user.branchId = req.body.branchId || user.branchId;
             user.phone = req.body.phone || user.phone;
@@ -334,20 +502,89 @@ const updateUser = async (req, res) => {
             const updatedUser = await user.save();
             const populatedUser = await User.findById(updatedUser._id).populate('branchId', 'name city');
 
-            res.json({
+            response.success = true;
+            response.message = 'User updated successfully';
+            response.status = 200;
+            response.data = {
                 _id: populatedUser._id,
                 name: populatedUser.name,
+                userName: populatedUser.userName,
                 email: populatedUser.email,
                 role: populatedUser.role,
                 phone: populatedUser.phone,
                 branchId: populatedUser.branchId,
-            });
+            };
         } else {
-            res.status(404).json({ message: 'User not found' });
+            response.message = 'User not found';
+            response.status = 404;
         }
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error('Update User Error:', error);
+        response.message = error.message;
+        response.status = 500;
+    } finally {
+        return res.status(response.status).json(response);
     }
+};
+
+// @desc    Validate field (userName, email, phone, upline)
+// @route   POST /api/auth/validate
+// @access  Public
+const validateField = async (req, res) => {
+    let response = ResponseHelper.getResponse(false, "Something went wrong", {}, 400);
+    try {
+        const { field, value } = req.body;
+
+        if (!field || !value) {
+            response.message = 'Field and value are required';
+            return res.status(400).json(response);
+        }
+
+        const query = {};
+        if (field === 'upline') {
+            query['userName'] = value; // Search by userName for upline validation
+        } else {
+            query[field] = value;
+        }
+
+        const user = await User.findOne(query);
+
+        if (field === 'upline') {
+            // For upline, we want to know if it EXISTS
+            if (user) {
+                response.success = true;
+                response.message = 'Referral ID is valid';
+                response.status = 200;
+            } else {
+                response.message = 'Referral ID not found';
+                response.status = 404;
+            }
+        } else {
+            // For others (userName, email, phone), we want to know if it's AVAILABLE (doesn't exist)
+            if (user) {
+                response.message = `${field.charAt(0).toUpperCase() + field.slice(1)} is already taken`;
+                response.status = 409; // Conflict
+            } else {
+                response.success = true;
+                response.message = `${field.charAt(0).toUpperCase() + field.slice(1)} is available`;
+                response.status = 200;
+            }
+        }
+    } catch (error) {
+        console.error('Validation Error:', error);
+        response.message = error.message;
+        response.status = 500;
+    } finally {
+        return res.status(response.status).json(response);
+    }
+};
+
+// @desc    Get team tree
+// @route   GET /api/auth/tree/:id
+// @access  Private
+const getTeamTree = async (req, res) => {
+    let response = ResponseHelper.getResponse(false, "Feature not implemented yet", {}, 501);
+    return res.status(501).json(response);
 };
 
 module.exports = {
@@ -360,5 +597,7 @@ module.exports = {
     forgotPassword,
     resetPassword,
     updateUserStatus,
-    updateUser
+    updateUser,
+    validateField,
+    getTeamTree
 };

@@ -45,7 +45,7 @@ const saleSchema = mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['pending', 'completed', 'rejected'],
+        enum: ['pending', 'completed', 'rejected', 'active', 'cancelled'],
         default: 'pending'
     },
     paymentMethod: {
@@ -53,8 +53,47 @@ const saleSchema = mongoose.Schema({
         enum: ['Cash in hand', 'Bank account'],
         required: true
     },
-    documentPath: {
-        type: String
+    productStatus: {
+        type: String,
+        enum: ['with_product', 'without_product'],
+        default: 'without_product'
+    },
+    // Investment Tracking Fields (from Stake)
+    duration: {
+        type: Number, // in days (365 for 12 months)
+    },
+    rewardPercentage: {
+        type: Number, // monthly rate (e.g. 0.05)
+    },
+    endDate: {
+        type: Date,
+    },
+    lastRewardAt: {
+        type: Date,
+        default: null,
+    },
+    currentPhase: {
+        type: Number,
+        default: 1,
+        min: 1
+    },
+    phaseStartDate: {
+        type: Date,
+        default: Date.now
+    },
+    monthsCompleted: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+    totalProfitEarned: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+    profitCap: {
+        type: Number,
+        // Set to 5× investment amount on completion
     }
 }, {
     timestamps: true

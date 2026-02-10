@@ -9,6 +9,9 @@ const salesRoutes = require('./routes/salesRoutes');
 
 dotenv.config();
 
+// Initialize Crons
+require('./cron/rewardCron');
+
 // Connect to MongoDB
 connectDB();
 
@@ -62,6 +65,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/sales', salesRoutes);
 app.use('/api/branches', require('./routes/branchRoutes'));
 app.use('/api/investors', require('./routes/investorRoutes'));
+app.use('/api/withdrawals', require('./routes/withdrawalRoutes'));
+app.use('/api/rewards', require('./routes/rewardRoutes'));
+app.use('/api/investments', require('./routes/investmentRoutes'));
 
 // Error Handling Middleware (Simple)
 app.use((err, req, res, next) => {

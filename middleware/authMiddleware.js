@@ -1,6 +1,8 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
+const ResponseHelper = require('../utils/ResponseHelper');
+
 const protect = async (req, res, next) => {
     let token;
 
@@ -22,15 +24,22 @@ const protect = async (req, res, next) => {
                 req.user = await User.findById(decoded.id).select('-password');
             }
 
+            if (!req.user) {
+                const response = ResponseHelper.getResponse(false, 'Not authorized, user not found', {}, 401);
+                return res.status(401).json(response);
+            }
+
             next();
         } catch (error) {
             console.error(error);
-            res.status(401).json({ message: 'Not authorized, token failed' });
+            const response = ResponseHelper.getResponse(false, 'Not authorized, token failed', {}, 401);
+            return res.status(401).json(response);
         }
     }
 
     if (!token) {
-        res.status(401).json({ message: 'Not authorized, no token' });
+        const response = ResponseHelper.getResponse(false, 'Not authorized, no token', {}, 401);
+        return res.status(401).json(response);
     }
 };
 
@@ -38,7 +47,8 @@ const admin = (req, res, next) => {
     if (req.user && req.user.role === 'super_admin') {
         next();
     } else {
-        res.status(401).json({ message: 'Not authorized as an admin' });
+        const response = ResponseHelper.getResponse(false, 'Not authorized as an admin', {}, 401);
+        return res.status(401).json(response);
     }
 };
 

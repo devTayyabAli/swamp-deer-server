@@ -1,6 +1,7 @@
 const Sale = require('../models/Sale');
 const User = require('../models/User');
 const { generateInvestmentDocument } = require('../utils/pdfGenerator');
+const { processCompletedSale } = require('../services/stakeService');
 
 // @desc    Get all sales
 // @route   GET /api/sales
@@ -103,23 +104,24 @@ const getSales = async (req, res) => {
 // @route   POST /api/sales
 // @access  Private
 const createSale = async (req, res) => {
-    const { branch, investor, referrer, customerName, description, amount, commission, investorProfit, paymentMethod } = req.body;
+    const { description, amount, commission, investorProfit, paymentMethod, productStatus } = req.body;
 
-    if (!branch || !investor || !customerName || !description || !amount || investorProfit === undefined || !paymentMethod) {
+    if (!description || !amount || investorProfit === undefined || !paymentMethod) {
         return res.status(400).json({ message: 'Please fill in all required fields' });
     }
 
     const sale = await Sale.create({
         user: req.user._id,
-        branchId: branch,
-        investorId: investor,
-        referrerId: referrer || null,
-        customerName,
+        branchId: req.user.branchId,
+        investorId: req.user._id, // User is investing for themselves
+        referrerId: req.user.upline || null,
+        customerName: req.user.name,
         description,
         amount,
         commission,
         investorProfit,
-        paymentMethod
+        paymentMethod,
+        productStatus: productStatus || 'without_product'
     });
 
     if (sale) {
@@ -164,8 +166,15 @@ const updateSaleStatus = async (req, res) => {
         const sale = await Sale.findById(req.params.id);
 
         if (sale) {
+            const oldStatus = sale.status;
             sale.status = status;
             const updatedSale = await sale.save();
+
+            // Trigger staking and commission logic if sale is completed
+            if (status === 'completed' && oldStatus !== 'completed') {
+                await processCompletedSale(updatedSale._id);
+            }
+
             res.json(updatedSale);
         } else {
             res.status(404).json({ message: 'Sale not found' });

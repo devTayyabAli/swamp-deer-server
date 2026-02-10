@@ -14,7 +14,16 @@ const getInvestors = async (req, res) => {
             match.role = isReferrer === 'true' ? 'referrer' : 'investor';
         }
 
-        const { startDate, endDate } = req.query;
+        const { startDate, endDate, search } = req.query;
+
+        if (search) {
+            match.$or = [
+                { name: { $regex: search, $options: 'i' } },
+                { email: { $regex: search, $options: 'i' } },
+                { phone: { $regex: search, $options: 'i' } }
+            ];
+        }
+
         if (startDate || endDate) {
             match.createdAt = {};
             if (startDate) match.createdAt.$gte = new Date(startDate);
@@ -27,13 +36,20 @@ const getInvestors = async (req, res) => {
 
         const aggregation = [
             { $match: match },
-            // Lookup amount invested (as investorId)
             {
                 $lookup: {
                     from: 'sales',
                     localField: '_id',
                     foreignField: 'investorId',
                     as: 'investments'
+                }
+            },
+            {
+                $lookup: {
+                    from: 'sales',
+                    localField: '_id',
+                    foreignField: 'user',
+                    as: 'salesMade'
                 }
             },
             {
@@ -46,7 +62,7 @@ const getInvestors = async (req, res) => {
                                     $filter: {
                                         input: '$investments',
                                         as: 's',
-                                        cond: { $eq: ['$$s.status', 'completed'] }
+                                        cond: { $in: ['$$s.status', ['completed', 'active']] }
                                     }
                                 },
                                 as: 'sale',
@@ -55,19 +71,38 @@ const getInvestors = async (req, res) => {
                         }
                     },
                     totalReward: {
-                        $sum: {
-                            $map: {
-                                input: {
-                                    $filter: {
-                                        input: '$investments',
-                                        as: 's',
-                                        cond: { $eq: ['$$s.status', 'completed'] }
+                        $add: [
+                            {
+                                $sum: {
+                                    $map: {
+                                        input: {
+                                            $filter: {
+                                                input: '$investments',
+                                                as: 's',
+                                                cond: { $in: ['$$s.status', ['completed', 'active']] }
+                                            }
+                                        },
+                                        as: 'sale',
+                                        in: { $ifNull: ['$$sale.investorProfit', { $multiply: ['$$sale.amount', 0.1] }] }
                                     }
-                                },
-                                as: 'sale',
-                                in: { $ifNull: ['$$sale.investorProfit', { $multiply: ['$$sale.amount', 0.1] }] }
+                                }
+                            },
+                            {
+                                $sum: {
+                                    $map: {
+                                        input: {
+                                            $filter: {
+                                                input: '$salesMade',
+                                                as: 's',
+                                                cond: { $in: ['$$s.status', ['completed', 'active']] }
+                                            }
+                                        },
+                                        as: 'sale',
+                                        in: { $ifNull: ['$$sale.commission', 0] }
+                                    }
+                                }
                             }
-                        }
+                        ]
                     }
                 }
             },
@@ -86,6 +121,14 @@ const getInvestors = async (req, res) => {
                 }
             },
             {
+                $lookup: {
+                    from: 'sales',
+                    localField: '_id',
+                    foreignField: 'user',
+                    as: 'salesMade'
+                }
+            },
+            {
                 $addFields: {
                     investorTotalAmt: {
                         $sum: {
@@ -94,7 +137,7 @@ const getInvestors = async (req, res) => {
                                     $filter: {
                                         input: '$investments',
                                         as: 's',
-                                        cond: { $eq: ['$$s.status', 'completed'] }
+                                        cond: { $in: ['$$s.status', ['completed', 'active']] }
                                     }
                                 },
                                 as: 'sale',
@@ -103,19 +146,38 @@ const getInvestors = async (req, res) => {
                         }
                     },
                     investorTotalReward: {
-                        $sum: {
-                            $map: {
-                                input: {
-                                    $filter: {
-                                        input: '$investments',
-                                        as: 's',
-                                        cond: { $eq: ['$$s.status', 'completed'] }
+                        $add: [
+                            {
+                                $sum: {
+                                    $map: {
+                                        input: {
+                                            $filter: {
+                                                input: '$investments',
+                                                as: 's',
+                                                cond: { $in: ['$$s.status', ['completed', 'active']] }
+                                            }
+                                        },
+                                        as: 'sale',
+                                        in: { $ifNull: ['$$sale.investorProfit', { $multiply: ['$$sale.amount', 0.1] }] }
                                     }
-                                },
-                                as: 'sale',
-                                in: { $ifNull: ['$$sale.investorProfit', { $multiply: ['$$sale.amount', 0.1] }] }
+                                }
+                            },
+                            {
+                                $sum: {
+                                    $map: {
+                                        input: {
+                                            $filter: {
+                                                input: '$salesMade',
+                                                as: 's',
+                                                cond: { $in: ['$$s.status', ['completed', 'active']] }
+                                            }
+                                        },
+                                        as: 'sale',
+                                        in: { $ifNull: ['$$sale.commission', 0] }
+                                    }
+                                }
                             }
-                        }
+                        ]
                     }
                 }
             },
@@ -238,7 +300,7 @@ const createInvestor = async (req, res) => {
     }
 };
 
-// @desc    Get investor team (upline and downline)
+// @desc    Get investor team (upline and downline) with sales stats
 // @route   GET /api/investors/:id/team
 // @access  Private
 const getInvestorTeam = async (req, res) => {
@@ -249,25 +311,115 @@ const getInvestorTeam = async (req, res) => {
             return res.status(404).json({ message: 'Partner not found' });
         }
 
-        // Find all users who have this partner as their upline
-        const downline = await User.find({ upline: id }).sort({ name: 1 });
+        // Find all direct downline (users who have this partner as their upline)
+        const directDownline = await User.find({ upline: id }).sort({ createdAt: 1 });
+
+        // Find all indirect downline (recursively get downline of downline)
+        const getIndirectDownline = async (userId) => {
+            const directChildren = await User.find({ upline: userId });
+            let allIndirect = [];
+
+            for (const child of directChildren) {
+                const childrenOfChild = await getIndirectDownline(child._id);
+                allIndirect = allIndirect.concat(childrenOfChild);
+            }
+
+            return allIndirect.concat(directChildren);
+        };
+
+        let indirectDownline = [];
+        for (const directMember of directDownline) {
+            const indirectMembers = await getIndirectDownline(directMember._id);
+            indirectDownline = indirectDownline.concat(indirectMembers);
+        }
+
+        // Remove duplicates from indirect (keep only truly indirect)
+        const directIds = new Set(directDownline.map(d => d._id.toString()));
+        indirectDownline = indirectDownline.filter(member => !directIds.has(member._id.toString()));
+
+        // Aggregate sales data for all team members (including current partner)
+        const allTeamIds = [id, ...directDownline.map(d => d._id), ...indirectDownline.map(d => d._id)];
+
+        const salesAggregation = await Sale.aggregate([
+            {
+                $match: {
+                    user: { $in: allTeamIds },
+                    status: { $in: ['completed', 'active'] }
+                }
+            },
+            {
+                $group: {
+                    _id: '$user',
+                    totalAmount: { $sum: '$amount' },
+                    totalProfit: { $sum: '$commission' }
+                }
+            }
+        ]);
+
+        // Create a map for quick lookup
+        const salesMap = new Map();
+        salesAggregation.forEach(stat => {
+            salesMap.set(stat._id.toString(), {
+                amount: stat.totalAmount,
+                profit: stat.totalProfit
+            });
+        });
+
+        // Format direct team members
+        const formattedDirect = directDownline.map(member => {
+            const stats = salesMap.get(member._id.toString()) || { amount: 0, profit: 0 };
+            return {
+                _id: member._id,
+                name: member.name,
+                fullName: member.name,
+                email: member.email,
+                phone: member.phone,
+                role: member.role,
+                amount: stats.amount,
+                profit: stats.profit,
+                date: member.createdAt,
+                upline: user.name,
+                type: 'direct'
+            };
+        });
+
+        // Format indirect team members
+        const formattedIndirect = indirectDownline.map(member => {
+            const stats = salesMap.get(member._id.toString()) || { amount: 0, profit: 0 };
+            return {
+                _id: member._id,
+                name: member.name,
+                fullName: member.name,
+                email: member.email,
+                phone: member.phone,
+                role: member.role,
+                amount: stats.amount,
+                profit: stats.profit,
+                date: member.createdAt,
+                upline: 'N/A', // Could be enhanced to show actual upline
+                type: 'indirect'
+            };
+        });
 
         res.json({
-            upline: user.upline ? { _id: user.upline._id, name: user.upline.name, fullName: user.upline.name, phone: user.upline.phone } : null,
+            upline: user.upline ? {
+                _id: user.upline._id,
+                name: user.upline.name,
+                fullName: user.upline.name,
+                phone: user.upline.phone
+            } : null,
             current: {
                 _id: user._id,
                 name: user.name,
                 fullName: user.name,
                 phone: user.phone,
-                role: user.role
+                role: user.role,
+                amountInvested: salesMap.get(user._id.toString())?.amount || 0,
+                totalReward: salesMap.get(user._id.toString())?.profit || 0
             },
-            downline: downline.map(d => ({
-                _id: d._id,
-                name: d.name,
-                fullName: d.name,
-                phone: d.phone,
-                role: d.role
-            }))
+            direct: formattedDirect,
+            indirect: formattedIndirect,
+            all: [...formattedDirect, ...formattedIndirect]
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -298,7 +450,7 @@ const getPartnerProfileWithStats = async (req, res) => {
                                     $filter: {
                                         input: '$investments',
                                         as: 's',
-                                        cond: { $eq: ['$$s.status', 'completed'] }
+                                        cond: { $in: ['$$s.status', ['completed', 'active']] }
                                     }
                                 },
                                 as: 'sale',
@@ -313,7 +465,7 @@ const getPartnerProfileWithStats = async (req, res) => {
                                     $filter: {
                                         input: '$investments',
                                         as: 's',
-                                        cond: { $eq: ['$$s.status', 'completed'] }
+                                        cond: { $in: ['$$s.status', ['completed', 'active']] }
                                     }
                                 },
                                 as: 'sale',

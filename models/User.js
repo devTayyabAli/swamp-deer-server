@@ -11,6 +11,11 @@ const userSchema = mongoose.Schema({
         required: true,
         unique: true
     },
+    userName: {
+        type: String,
+        unique: true,
+        required: true
+    },
     password: {
         type: String,
         required: true
@@ -25,15 +30,38 @@ const userSchema = mongoose.Schema({
         unique: true,
         sparse: true // Allow null for accounts without phone initially
     },
+    referredBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
+    userRankId: {
+        type: Number,
+        default: null
+    },
+    totalSelfBusiness: {
+        type: Number,
+        default: 0
+    },
+    totalDirectBusiness: {
+        type: Number,
+        default: 0
+    },
+    totalTeamBusiness: {
+        type: Number,
+        default: 0
+    },
+    totalTeamSize: {
+        type: Number,
+        default: 0
+    },
+    currentLevel: {
+        type: Number,
+        default: 0
+    },
     address: String,
     upline: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
-    },
-    productStatus: {
-        type: String,
-        enum: ['with_product', 'without_product'],
-        default: 'without_product'
     },
     branchId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -44,13 +72,12 @@ const userSchema = mongoose.Schema({
         enum: ['active', 'banned'],
         default: 'active'
     },
-    profitRate: {
-        type: Number,
-        default: 0.05 // Default 5%
-    },
-    commissionRate: {
-        type: Number,
-        default: 0.05 // Default 5%
+    bankDetails: {
+        accountNumber: String,
+        ifscCode: String,
+        bankName: String,
+        branchName: String,
+        accountHolderName: String
     },
     resetPasswordToken: String,
     resetPasswordExpires: Date
@@ -62,6 +89,7 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
     return await bcrypt.compare(enteredPassword, this.password);
 };
 
+// Mongoose 5.x+ supports async functions without next callback
 userSchema.pre('save', async function () {
     if (!this.isModified('password')) {
         return;
