@@ -102,7 +102,7 @@ const distributeMonthlyRewards = async () => {
                 }
             }
 
-            // Log Success
+            // Log Successsss
             await CronLog.create({
                 jobName,
                 status: 'success',
