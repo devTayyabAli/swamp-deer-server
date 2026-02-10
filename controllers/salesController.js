@@ -134,14 +134,14 @@ const createSale = async (req, res) => {
     if (sale) {
         // Generate PDF Document
         try {
-            const investorData = await User.findById(investor);
+            const investorData = await User.findById(sale.investorId);
             if (investorData) {
                 // Map name to fullName for PDF generator compatibility if needed
-                const pdftData = {
+                const pdfData = {
                     ...investorData.toObject(),
                     fullName: investorData.name
                 };
-                const pdfPath = await generateInvestmentDocument(sale, pdftData);
+                const pdfPath = await generateInvestmentDocument(sale, pdfData);
                 console.log(`Document generated at: ${pdfPath}`);
                 // Store as relative URL for the frontend
                 const relativePath = `uploads/documents/investment_${sale._id}.pdf`;

@@ -4,6 +4,7 @@ const UserStakeReward = require('../models/UserStakingReward');
 const mongoose = require('mongoose');
 const RankGiftRequest = require('../models/RankGiftRequest');
 const { calculateBalance } = require('./withdrawalController');
+const { getAllPhases } = require('../config/investmentPlans');
 
 // @desc    Get dashboard statistics for current user
 // @route   GET /api/investors/dashboard/stats
@@ -90,15 +91,23 @@ const getDashboardStats = async (req, res) => {
         ]);
 
         let totalProfitEarned = 0;
-        let stakingIncome = 0;
+        let investmentBonusKPI = 0; // Aggregated for Dashboard KPI
+        let stakingRewards = 0; // Specific to 'staking' type for breakdown
         let levelIncome = 0;
         let referralIncome = 0;
 
         rewardsAggregation.forEach(reward => {
             totalProfitEarned += reward.total;
-            if (reward._id === 'staking') stakingIncome = reward.total;
+
+            // Track individual types for detailed breakdown
+            if (reward._id === 'staking') stakingRewards = reward.total;
             if (reward._id === 'level_income') levelIncome = reward.total;
             if (reward._id === 'direct_income') referralIncome = reward.total;
+
+            // Investment Bonus KPI includes all investment-related rewards
+            if (reward._id === 'staking' || reward._id === 'direct_income' || reward._id === 'level_income') {
+                investmentBonusKPI += reward.total;
+            }
         });
 
         // Get investment overview (where user is the investor)
@@ -113,7 +122,7 @@ const getDashboardStats = async (req, res) => {
                 $group: {
                     _id: null,
                     totalInvestment: { $sum: '$amount' },
-                    totalProfit: { $sum: '$investorProfit' }
+                    totalProfit: { $sum: '$totalProfitEarned' }
                 }
             }
         ]);
@@ -123,15 +132,73 @@ const getDashboardStats = async (req, res) => {
             totalProfit: 0
         };
 
-        // Calculate monthly profit dynamically from active sales
+        // Calculate monthly profit dynamically from active and pending sales
         const activeSalesForROI = await Sale.find({
-            investorId: userId,
-            status: 'active'
-        });
+            investorId: new mongoose.Types.ObjectId(userId),
+            status: { $in: ['completed', 'active'] }
+        }).sort({ createdAt: -1 });
+
+        console.log('activeSalesForROI', activeSalesForROI);
+
+        console.log('=== MONTHLY PROFIT CALCULATION DEBUG ===');
+        console.log('User ID:', userId);
+        console.log('Number of pending/active sales found:', activeSalesForROI.length);
+        console.log('Active/Pending Sales for Monthly Profit:', activeSalesForROI.map(s => ({
+            id: s._id,
+            amount: s.amount,
+            investorProfit: s.investorProfit,
+            status: s.status
+        })));
 
         const monthlyProfit = activeSalesForROI.reduce((sum, s) => {
-            return sum + (s.amount * (s.rewardPercentage || 0));
+            const amount = Number(s.amount) || 0;
+            const rate = Number(s.investorProfit) || 0.05; // Default to 5% if null, undefined, or 0
+            const profit = amount * rate;
+            console.log(`Sale ${s._id}: amount=${amount}, rate=${rate}, profit=${profit}`);
+            return sum + profit;
         }, 0);
+
+        console.log('FINAL Monthly Profit:', monthlyProfit);
+        console.log('=== END DEBUG ===');
+
+        // Get latest investment details for display with dynamic phase calculation
+        const latestInvestment = activeSalesForROI.length > 0 ? activeSalesForROI[0] : null;
+
+        let currentPhase = 1;
+        let profitRate = 0.05; // Default rate
+
+        if (latestInvestment) {
+            const productStatus = latestInvestment.productStatus || 'without_product';
+            // Get all phases for this product status (from config)
+            const phases = getAllPhases(productStatus);
+            // Default to 0 months completed
+            const monthsCompleted = latestInvestment.monthsCompleted || 0;
+
+            let accumulatedMonths = 0;
+            let phaseFound = false;
+
+            for (const p of phases) {
+                // If monthsCompleted falls within this phase's range
+                if (monthsCompleted < (accumulatedMonths + p.months)) {
+                    currentPhase = p.phase;
+                    profitRate = p.rate;
+                    phaseFound = true;
+                    break;
+                }
+                accumulatedMonths += p.months;
+            }
+
+            // If completed all phases or extended beyond defined phases
+            if (!phaseFound && phases.length > 0) {
+                const lastPhase = phases[phases.length - 1];
+                currentPhase = lastPhase.phase;
+                profitRate = lastPhase.rate;
+            } else if (!phaseFound) {
+                // Fallback if no phases found
+                currentPhase = latestInvestment.currentPhase || 1;
+                profitRate = latestInvestment.investorProfit || 0.05;
+            }
+        }
 
         // Calculate available balance
         const availableBalance = await calculateBalance(userId);
@@ -203,7 +270,7 @@ const getDashboardStats = async (req, res) => {
                 totalDirectBusiness: directBusinessVolume,
                 totalIndirectBusiness: indirectBusinessVolume,
                 totalProfitEarned,
-                stakingIncome,
+                stakingIncome: stakingRewards,
                 referralIncome,
                 levelIncome,
                 availableBalance
@@ -217,10 +284,12 @@ const getDashboardStats = async (req, res) => {
                 totalInvestment: investmentStats.totalInvestment,
                 totalProfit: investmentStats.totalProfit,
                 monthlyProfit: monthlyProfit,
-                roiStatus: investmentStats.totalInvestment > 0 ? 'Growing' : 'No Investment'
+                roiStatus: investmentStats.totalInvestment > 0 ? 'Growing' : 'No Investment',
+                currentPhase: currentPhase,
+                profitRate: profitRate
             },
             rewards: {
-                staking: stakingIncome,
+                staking: stakingRewards,
                 level: levelIncome,
                 referral: referralIncome,
                 total: totalProfitEarned

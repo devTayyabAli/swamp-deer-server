@@ -19,7 +19,7 @@ const distributeMonthlyRewards = async () => {
     const jobName = 'Profit Share Distribution';
     let attempts = 0;
     const maxAttempts = 3;
-
+    console.log('Running Profit Share Distribution Cron...');
     while (attempts < maxAttempts) {
         attempts++;
         console.log(`Running ${jobName} Attempt ${attempts}/${maxAttempts} [${process.env.NODE_ENV}]...`);
@@ -138,7 +138,7 @@ const distributeMonthlyRewards = async () => {
 // Schedule: 
 // Development: every 10 minutes
 // Production: every hour (checking for matured individual investments)
-const cronSchedule = process.env.NODE_ENV === 'development' ? '*/10 * * * *' : '0 * * * *';
+const cronSchedule = process.env.NODE_ENV === 'development' ? '*/5 * * * *' : '0 * * * *';
 cron.schedule(cronSchedule, distributeMonthlyRewards);
 
 module.exports = {
