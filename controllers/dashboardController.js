@@ -161,24 +161,18 @@ const getDashboardStats = async (req, res) => {
         console.log('FINAL Monthly Profit:', monthlyProfit);
         console.log('=== END DEBUG ===');
 
-        // Get latest investment details for display with dynamic phase calculation
-        const latestInvestment = activeSalesForROI.length > 0 ? activeSalesForROI[0] : null;
-
-        let currentPhase = 1;
-        let profitRate = 0.05; // Default rate
-
-        if (latestInvestment) {
-            const productStatus = latestInvestment.productStatus || 'without_product';
-            // Get all phases for this product status (from config)
+        // Calculate details for ALL active/pending investments
+        const activeInvestments = activeSalesForROI.map(sale => {
+            const productStatus = sale.productStatus || 'without_product';
             const phases = getAllPhases(productStatus);
-            // Default to 0 months completed
-            const monthsCompleted = latestInvestment.monthsCompleted || 0;
+            const monthsCompleted = sale.monthsCompleted || 0;
 
-            let accumulatedMonths = 0;
+            let currentPhase = 1;
+            let profitRate = sale.investorProfit || 0.05;
             let phaseFound = false;
+            let accumulatedMonths = 0;
 
             for (const p of phases) {
-                // If monthsCompleted falls within this phase's range
                 if (monthsCompleted < (accumulatedMonths + p.months)) {
                     currentPhase = p.phase;
                     profitRate = p.rate;
@@ -188,17 +182,28 @@ const getDashboardStats = async (req, res) => {
                 accumulatedMonths += p.months;
             }
 
-            // If completed all phases or extended beyond defined phases
             if (!phaseFound && phases.length > 0) {
                 const lastPhase = phases[phases.length - 1];
                 currentPhase = lastPhase.phase;
                 profitRate = lastPhase.rate;
-            } else if (!phaseFound) {
-                // Fallback if no phases found
-                currentPhase = latestInvestment.currentPhase || 1;
-                profitRate = latestInvestment.investorProfit || 0.05;
             }
-        }
+
+            return {
+                _id: sale._id,
+                amount: sale.amount,
+                currentPhase,
+                profitRate,
+                productStatus,
+                date: sale.createdAt,
+                totalProfit: sale.totalProfitEarned || 0,
+                monthlyProfit: sale.amount * profitRate
+            };
+        });
+
+        // Use the latest investment for the main "Summary" display (fallback)
+        const latestInvestment = activeInvestments.length > 0 ? activeInvestments[0] : null;
+        const currentPhase = latestInvestment ? latestInvestment.currentPhase : 1;
+        const profitRate = latestInvestment ? latestInvestment.profitRate : 0.05;
 
         // Calculate available balance
         const availableBalance = await calculateBalance(userId);
@@ -286,7 +291,8 @@ const getDashboardStats = async (req, res) => {
                 monthlyProfit: monthlyProfit,
                 roiStatus: investmentStats.totalInvestment > 0 ? 'Growing' : 'No Investment',
                 currentPhase: currentPhase,
-                profitRate: profitRate
+                profitRate: profitRate,
+                activeInvestments: activeInvestments
             },
             rewards: {
                 staking: stakingRewards,

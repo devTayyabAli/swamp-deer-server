@@ -300,6 +300,10 @@ const createInvestor = async (req, res) => {
     }
 };
 
+const UserStakeReward = require('../models/UserStakingReward');
+
+// ... (existing code)
+
 // @desc    Get investor team (upline and downline) with sales stats
 // @route   GET /api/investors/:id/team
 // @access  Private
@@ -337,9 +341,9 @@ const getInvestorTeam = async (req, res) => {
         const directIds = new Set(directDownline.map(d => d._id.toString()));
         indirectDownline = indirectDownline.filter(member => !directIds.has(member._id.toString()));
 
-        // Aggregate sales data for all team members (including current partner)
         const allTeamIds = [id, ...directDownline.map(d => d._id), ...indirectDownline.map(d => d._id)];
 
+        // Aggregate total investment amount per user
         const salesAggregation = await Sale.aggregate([
             {
                 $match: {
@@ -350,24 +354,54 @@ const getInvestorTeam = async (req, res) => {
             {
                 $group: {
                     _id: '$user',
-                    totalAmount: { $sum: '$amount' },
-                    totalProfit: { $sum: '$commission' }
+                    totalAmount: { $sum: '$amount' }
                 }
             }
         ]);
 
-        // Create a map for quick lookup
+        // Aggregate ACTUAL earnings from team (level/direct income)
+        const earningsAggregation = await UserStakeReward.aggregate([
+            {
+                $match: {
+                    userId: new mongoose.Types.ObjectId(id), // Rewards received by ME (or the viewed user)
+                    type: { $in: ['level_income', 'direct_income'] }
+                }
+            },
+            {
+                $lookup: {
+                    from: 'sales',
+                    localField: 'stakeId',
+                    foreignField: '_id',
+                    as: 'stake'
+                }
+            },
+            { $unwind: '$stake' },
+            {
+                $match: {
+                    'stake.user': { $in: allTeamIds } // Only rewards from my team found above
+                }
+            },
+            {
+                $group: {
+                    _id: '$stake.user', // Group by the downline member who generated this income
+                    totalEarned: { $sum: '$amount' }
+                }
+            }
+        ]);
+
+        // Create maps for quick lookup
         const salesMap = new Map();
         salesAggregation.forEach(stat => {
-            salesMap.set(stat._id.toString(), {
-                amount: stat.totalAmount,
-                profit: stat.totalProfit
-            });
+            salesMap.set(stat._id.toString(), stat.totalAmount);
+        });
+
+        const earningsMap = new Map(); // Map: DownlineUserID -> EarningsFromThem
+        earningsAggregation.forEach(stat => {
+            earningsMap.set(stat._id.toString(), stat.totalEarned);
         });
 
         // Format direct team members
         const formattedDirect = directDownline.map(member => {
-            const stats = salesMap.get(member._id.toString()) || { amount: 0, profit: 0 };
             return {
                 _id: member._id,
                 name: member.name,
@@ -375,8 +409,8 @@ const getInvestorTeam = async (req, res) => {
                 email: member.email,
                 phone: member.phone,
                 role: member.role,
-                amount: stats.amount,
-                profit: stats.profit,
+                amount: salesMap.get(member._id.toString()) || 0,
+                profit: earningsMap.get(member._id.toString()) || 0, // CORRECTED: Now shows earnings from them
                 date: member.createdAt,
                 upline: user.name,
                 type: 'direct'
@@ -385,7 +419,6 @@ const getInvestorTeam = async (req, res) => {
 
         // Format indirect team members
         const formattedIndirect = indirectDownline.map(member => {
-            const stats = salesMap.get(member._id.toString()) || { amount: 0, profit: 0 };
             return {
                 _id: member._id,
                 name: member.name,
@@ -393,10 +426,10 @@ const getInvestorTeam = async (req, res) => {
                 email: member.email,
                 phone: member.phone,
                 role: member.role,
-                amount: stats.amount,
-                profit: stats.profit,
+                amount: salesMap.get(member._id.toString()) || 0,
+                profit: earningsMap.get(member._id.toString()) || 0, // CORRECTED: Now shows earnings from them
                 date: member.createdAt,
-                upline: 'N/A', // Could be enhanced to show actual upline
+                upline: 'N/A',
                 type: 'indirect'
             };
         });

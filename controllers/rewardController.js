@@ -49,22 +49,54 @@ const getRewards = async (req, res) => {
         const limit = Number(req.query.limit) || 10;
         const skip = (page - 1) * limit;
 
-        const { type } = req.query;
+        const { type, startDate, endDate, level } = req.query;
         const query = { userId: req.user._id };
         if (type) query.type = type;
 
-        const count = await UserStakeReward.countDocuments(query);
-        const rewards = await UserStakeReward.find(query)
-            .populate('stakeId')
+        // Date Filter
+        if (startDate || endDate) {
+            query.createdAt = {};
+            if (startDate) query.createdAt.$gte = new Date(startDate);
+            if (endDate) query.createdAt.$lte = new Date(endDate);
+        }
+
+        // Level Filter (if level is stored in schema or description)
+        if (level) {
+            // Check if level is numeric or string match
+            // query.level = level; // Assuming level is added to schema in future
+        }
+
+        const countPromise = UserStakeReward.countDocuments(query);
+        const rewardsPromise = UserStakeReward.find(query)
+            .populate({
+                path: 'stakeId',
+                select: 'user amount productStatus',
+                populate: { path: 'user', select: 'name userName email' }
+            })
             .sort({ createdAt: -1 })
             .limit(limit)
             .skip(skip);
+
+        // Calculate Total for this filtered view
+        const totalAggregationPromise = UserStakeReward.aggregate([
+            { $match: query },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+
+        const [count, rewards, totalAggregation] = await Promise.all([
+            countPromise,
+            rewardsPromise,
+            totalAggregationPromise
+        ]);
+
+        const filteredTotal = totalAggregation.length > 0 ? totalAggregation[0].total : 0;
 
         res.json(ResponseHelper.getResponse(true, 'Rewards fetched successfully', {
             items: rewards,
             page,
             pages: Math.ceil(count / limit),
-            total: count
+            total: count,
+            filteredTotal: filteredTotal
         }));
     } catch (error) {
         res.status(500).json(ResponseHelper.getResponse(false, error.message));

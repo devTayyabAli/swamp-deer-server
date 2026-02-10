@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
+const crypto = require('crypto');
 
 const generateToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET || 'dev_secret_123', {
@@ -46,6 +47,13 @@ const authUser = async (req, res) => {
             console.log('Password match result:', passwordMatch);
 
             if (passwordMatch) {
+                // Check if email verification is pending (only for users with token)
+                if (user.isEmailVerified === false && user.emailVerificationToken) {
+                    response.message = 'Please verify your email address before logging in.';
+                    response.status = 403;
+                    return res.status(response.status).json(response);
+                }
+
                 if (user.status === 'banned') {
                     response.message = 'Your account has been banned. Please contact admin.';
                     response.status = 403;
@@ -85,7 +93,7 @@ const authUser = async (req, res) => {
     }
 };
 
-const { sendCredentials } = require('../utils/emailService');
+const { sendCredentials, sendVerificationEmail } = require('../utils/emailService');
 
 // @desc    Register a new user
 // @route   POST /api/auth/register
@@ -124,7 +132,10 @@ const registerUser = async (req, res) => {
             }
         }
 
-        const userData = {
+        const isProduction = process.env.NODE_ENV === 'production';
+        const verificationToken = (password && isProduction) ? crypto.randomBytes(20).toString('hex') : null;
+
+        let userData = {
             name,
             email,
             userName,
@@ -132,8 +143,15 @@ const registerUser = async (req, res) => {
             role: role || 'sales_rep',
             phone,
             address,
-            upline: uplineId
+            upline: uplineId,
+            isEmailVerified: !password || !isProduction // Auto-verify if created by admin or not in production
         };
+
+        if (verificationToken) {
+            // Self registration requires verification (only in production)
+            userData.emailVerificationToken = crypto.createHash('sha256').update(verificationToken).digest('hex');
+            userData.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+        }
 
         if (branch) {
             userData.branchId = branch;
@@ -143,17 +161,20 @@ const registerUser = async (req, res) => {
 
         if (user) {
             const populatedUser = await User.findById(user._id).populate('branchId', 'name city');
-            // Send email with credentials (only if generated)
-            if (!password) {
-                try {
+
+            // Send email based on registration type
+            try {
+                if (!password) {
                     await sendCredentials(user.email, finalPassword);
-                } catch (emailErr) {
-                    console.error('Failed to send credentials email:', emailErr);
+                } else if (verificationToken) {
+                    await sendVerificationEmail(user.email, verificationToken);
                 }
+            } catch (emailErr) {
+                console.error('Failed to send email:', emailErr);
             }
 
             response.success = true;
-            response.message = 'Registration successful';
+            response.message = verificationToken ? 'Registration successful. Please check your email to verify your account.' : 'Registration successful';
             response.status = 201;
             response.data = {
                 _id: populatedUser._id,
@@ -163,8 +184,12 @@ const registerUser = async (req, res) => {
                 role: populatedUser.role,
                 phone: populatedUser.phone,
                 branchId: populatedUser.branchId,
-                token: generateToken(populatedUser._id),
             };
+
+            // Generate token if verified (admin created or dev/auto-verified)
+            if (!verificationToken) {
+                response.data.token = generateToken(populatedUser._id);
+            }
         } else {
             response.message = 'Invalid user data';
         }
@@ -236,7 +261,6 @@ const authAdmin = async (req, res) => {
     }
 };
 
-const crypto = require('crypto');
 const { sendResetPasswordEmail } = require('../utils/emailService');
 
 // @desc    Update user profile
@@ -587,6 +611,50 @@ const getTeamTree = async (req, res) => {
     return res.status(501).json(response);
 };
 
+const verifyEmail = async (req, res) => {
+    let response = ResponseHelper.getResponse(false, "Something went wrong", {}, 400);
+    try {
+        const verificationToken = req.params.token;
+        if (!verificationToken) {
+            response.message = 'Token is required';
+            return res.status(400).json(response);
+        }
+
+        // Hash token to compare
+        const hashedToken = crypto.createHash('sha256').update(verificationToken).digest('hex');
+
+        const user = await User.findOne({
+            emailVerificationToken: hashedToken,
+            emailVerificationExpires: { $gt: Date.now() }
+        });
+
+        if (!user) {
+            response.message = 'Invalid or expired verification token';
+            return res.status(400).json(response);
+        }
+
+        user.isEmailVerified = true;
+        user.emailVerificationToken = undefined;
+        user.emailVerificationExpires = undefined;
+        await user.save();
+
+        response.success = true;
+        response.message = 'Email verified successfully';
+        response.status = 200;
+        response.data = {
+            verified: true,
+            email: user.email
+        };
+
+    } catch (error) {
+        console.error('Verify Email Error:', error);
+        response.message = error.message;
+        response.status = 500;
+    } finally {
+        return res.status(response.status).json(response);
+    }
+};
+
 module.exports = {
     authUser,
     registerUser,
@@ -599,5 +667,6 @@ module.exports = {
     updateUserStatus,
     updateUser,
     validateField,
-    getTeamTree
+    getTeamTree,
+    verifyEmail,
 };

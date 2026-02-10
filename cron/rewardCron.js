@@ -57,6 +57,7 @@ const distributeMonthlyRewards = async () => {
                 // 3. Check Profit Cap (5x Limit)
                 const capCheck = await checkProfitCap(investment, rawRewardAmount);
                 const rewardAmount = capCheck.allowedAmount;
+                console.log('rewardAmount', rewardAmount);
 
                 if (rewardAmount > 0) {
                     const rewardRecord = await UserStakeReward.create({

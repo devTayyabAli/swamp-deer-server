@@ -12,12 +12,14 @@ const {
     updateUserStatus,
     updateUser,
     getTeamTree,
-    validateField
+    validateField,
+    verifyEmail
 } = require('../controllers/authController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
 router.post('/register', registerUser);
 router.post('/login', authUser);
+router.put('/verifyemail/:token', verifyEmail);
 router.post('/validate', validateField);
 router.post('/admin-login', authAdmin);
 router.get('/users', protect, admin, getUsers);

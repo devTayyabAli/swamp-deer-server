@@ -25,18 +25,12 @@ if (!fs.existsSync(uploadsDir)) {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// app.use(cors({
-//     credentials: true,
-//     origin: '*',
-// }));
-
-
 const allowedOrigins = [
     'https://admin.swampdeer.cloud',
     'https://sale.swampdeer.cloud',
-    'https://user.swampdeer.cloud'
-
-
+    'https://user.swampdeer.cloud',
+    'http://localhost:5173',
+    'http://localhost:5174'
 ];
 
 app.use(cors({

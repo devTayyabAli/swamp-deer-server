@@ -79,4 +79,39 @@ const sendResetPasswordEmail = async (email, resetUrl) => {
     }
 };
 
-module.exports = { sendCredentials, sendResetPasswordEmail };
+const sendVerificationEmail = async (email, verificationToken) => {
+    const transporter = getTransporter();
+
+    // Use FRONTEND_URL or default to localhost
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const verificationUrl = `${frontendUrl}/verify-email/${verificationToken}`;
+
+    const mailOptions = {
+        from: process.env.EMAIL_FROM || '"Swamp Deer" <no-reply@unboundedwealth.com>',
+        to: email,
+        subject: 'Verify Your Email Address',
+        html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                <h2 style="color: #004225; text-align: center;">Welcome to Swamp Deer</h2>
+                <p>Hello,</p>
+                <p>Thank you for registering. Please verify your email address to complete your signup.</p>
+                <div style="text-align: center; margin: 30px 0;">
+                    <a href="${verificationUrl}" style="background-color: #004225; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Verify Email Address</a>
+                </div>
+                <p style="font-size: 14px;">Or copy this link:</p>
+                <code style="background: #f4f4f4; padding: 5px; word-break: break-all;">${verificationUrl}</code>
+                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+                <p style="font-size: 12px; color: #7f8c8d; text-align: center;">This link expires in 24 hours.</p>
+            </div>
+        `,
+    };
+
+    try {
+        await transporter.sendMail(mailOptions);
+        console.log('Verification Email sent to:', email);
+    } catch (error) {
+        console.error('Error sending verification email:', error);
+    }
+};
+
+module.exports = { sendCredentials, sendResetPasswordEmail, sendVerificationEmail };
