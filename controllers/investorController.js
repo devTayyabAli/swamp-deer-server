@@ -9,9 +9,9 @@ const getInvestors = async (req, res) => {
         const page = Number(req.query.page) || 1;
         const isReferrer = req.query.isReferrer;
 
-        const match = { role: { $in: ['investor', 'referrer'] } };
+        const match = { role: { $in: ['investor', 'referrer', 'sales_rep'] } };
         if (isReferrer !== undefined) {
-            match.role = isReferrer === 'true' ? 'referrer' : 'investor';
+            match.role = isReferrer === 'true' ? 'referrer' : { $in: ['investor', 'sales_rep'] };
         }
 
         const { startDate, endDate, search } = req.query;

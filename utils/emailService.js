@@ -114,4 +114,71 @@ const sendVerificationEmail = async (email, verificationToken) => {
     }
 };
 
-module.exports = { sendCredentials, sendResetPasswordEmail, sendVerificationEmail };
+const sendStakingCapReachedEmail = async (email, reason) => {
+    const transporter = getTransporter();
+
+    const mailOptions = {
+        from: process.env.EMAIL_FROM || '"Swamp Deer" <no-reply@unboundedwealth.com>',
+        to: email,
+        subject: 'Investment Cap Reached - Notification',
+        html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                <h2 style="color: #004225; text-align: center;">Investment Milestone Reached</h2>
+                <p>Hello,</p>
+                <p>We are writing to inform you that your staking investment has reached its allocated limit.</p>
+                <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #004225;">
+                    <p style="margin: 5px 0;"><strong>Closure Reason:</strong> ${reason}</p>
+                    <p style="margin: 5px 0;"><strong>Status:</strong> Completed</p>
+                </div>
+                <p>Your investment has successfully matured. You can now view your final earnings in your dashboard or start a new investment cycle.</p>
+                <div style="text-align: center; margin: 30px 0;">
+                    <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard" style="background-color: #004225; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Go to Dashboard</a>
+                </div>
+                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+                <p style="font-size: 12px; color: #7f8c8d; text-align: center;">This is an automated notification. Please do not reply.</p>
+            </div>
+        `,
+    };
+
+    try {
+        await transporter.sendMail(mailOptions);
+        console.log('Staking Cap Notification sent to:', email);
+    } catch (error) {
+        console.error('Error sending staking cap notification:', error);
+    }
+};
+
+const sendAdminCronFailureEmail = async (jobName, error) => {
+    const transporter = getTransporter();
+    const adminEmail = process.env.ADMIN_EMAIL || "mujigujjar125@gmail.com";
+
+    const mailOptions = {
+        from: process.env.EMAIL_FROM || '"Swamp Deer System" <no-reply@unboundedwealth.com>',
+        to: adminEmail,
+        subject: `CRITICAL: Cron Job Failed - ${jobName}`,
+        html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #fee2e2; border-radius: 10px; background-color: #fffafb;">
+                <h2 style="color: #991b1b; text-align: center;">System Alert: Cron Failure</h2>
+                <p>Hello Admin,</p>
+                <p>The system has detected a critical failure in a scheduled task after multiple retries.</p>
+                <div style="background-color: #fef2f2; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #991b1b;">
+                    <p style="margin: 5px 0;"><strong>Job Name:</strong> ${jobName}</p>
+                    <p style="margin: 5px 0;"><strong>Error:</strong> ${error}</p>
+                    <p style="margin: 5px 0;"><strong>Time:</strong> ${new Date().toLocaleString()}</p>
+                </div>
+                <p style="color: #7f1d1d; font-weight: bold;">Action Required: Please investigate the logs to identify the root cause.</p>
+                <hr style="border: none; border-top: 1px solid #fee2e2; margin: 20px 0;">
+                <p style="font-size: 12px; color: #7f8c8d; text-align: center;">This is a high-priority system notification.</p>
+            </div>
+        `,
+    };
+
+    try {
+        await transporter.sendMail(mailOptions);
+        console.log('Admin Failure Notification sent to:', adminEmail);
+    } catch (err) {
+        console.error('Error sending admin failure notification:', err);
+    }
+};
+
+module.exports = { sendCredentials, sendResetPasswordEmail, sendVerificationEmail, sendStakingCapReachedEmail, sendAdminCronFailureEmail };

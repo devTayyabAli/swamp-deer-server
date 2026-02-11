@@ -10,6 +10,7 @@ const {
     checkProfitCap
 } = require('../services/stakeService');
 const { INVESTMENT_CONSTANTS } = require('../config/investmentPlans');
+const { sendStakingCapReachedEmail, sendAdminCronFailureEmail } = require('../utils/emailService');
 
 /**
  * Profit Share Distribution Cron
@@ -89,9 +90,11 @@ const distributeMonthlyRewards = async () => {
                     if (capCheck.isCapReached) {
                         investment.status = 'completed';
                         console.log(`Investment ${investment._id} COMPLETED (Cap Reached)`);
+                        await sendStakingCapReachedEmail(user.email, 'Profit Cap (5x Limit)');
                     } else if (investment.monthsCompleted >= INVESTMENT_CONSTANTS.TOTAL_DURATION_MONTHS) {
                         investment.status = 'completed';
                         console.log(`Investment ${investment._id} COMPLETED (Time Expired)`);
+                        await sendStakingCapReachedEmail(user.email, 'Time Duration (12 Months)');
                     }
 
                     await investment.save();
@@ -99,16 +102,10 @@ const distributeMonthlyRewards = async () => {
                 } else if (capCheck.isCapReached) {
                     investment.status = 'completed';
                     await investment.save();
+                    await sendStakingCapReachedEmail(user.email, 'Profit Cap (5x Limit)');
                     processedCount++;
                 }
             }
-
-            // Log Successsss
-            await CronLog.create({
-                jobName,
-                status: 'success',
-                details: `Processed ${processedCount} due investments out of ${activeInvestments.length} active. (Attempt ${attempts})`
-            });
 
             console.log(`Processed ${processedCount} due investments out of ${activeInvestments.length} active.`);
             break; // Success! Exit the retry loop
@@ -125,8 +122,10 @@ const distributeMonthlyRewards = async () => {
                         error: error.message,
                         details: `Failed after ${maxAttempts} attempts. Final error: ${error.message}`
                     });
+                    // Send Email to Admin
+                    await sendAdminCronFailureEmail(jobName, error.message);
                 } catch (logError) {
-                    console.error('Failed to save cron log:', logError);
+                    console.error('Failed to save cron log or send admin email:', logError);
                 }
             } else {
                 // Wait 5 seconds before next attempt

@@ -29,7 +29,7 @@ const userSchema = mongoose.Schema({
     role: {
         type: String,
         enum: ['super_admin', 'branch_manager', 'sales_rep', 'investor', 'referrer'],
-        default: 'sales_rep'
+        default: 'investor'
     },
     phone: {
         type: String,
@@ -86,7 +86,8 @@ const userSchema = mongoose.Schema({
         accountHolderName: String
     },
     resetPasswordToken: String,
-    resetPasswordExpires: Date
+    resetPasswordExpires: Date,
+    profilePic: String
 }, {
     timestamps: true
 });

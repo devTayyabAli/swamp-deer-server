@@ -71,6 +71,7 @@ const authUser = async (req, res) => {
                     role: user.role,
                     phone: user.phone,
                     branchId: user.branchId,
+                    profilePic: user.profilePic,
                     token: generateToken(user._id),
                 };
             } else {
@@ -140,7 +141,7 @@ const registerUser = async (req, res) => {
             email,
             userName,
             password: finalPassword,
-            role: role || 'sales_rep',
+            role: role || 'investor',
             phone,
             address,
             upline: uplineId,
@@ -184,6 +185,7 @@ const registerUser = async (req, res) => {
                 role: populatedUser.role,
                 phone: populatedUser.phone,
                 branchId: populatedUser.branchId,
+                profilePic: populatedUser.profilePic,
             };
 
             // Generate token if verified (admin created or dev/auto-verified)
@@ -246,6 +248,7 @@ const authAdmin = async (req, res) => {
                 role: user.role,
                 phone: user.phone,
                 branchId: user.branchId,
+                profilePic: user.profilePic,
                 token: generateToken(user._id),
             };
         } else {
@@ -274,6 +277,9 @@ const updateUserProfile = async (req, res) => {
         if (user) {
             user.name = req.body.name || user.name;
             user.email = req.body.email || user.email;
+            user.phone = req.body.phone || user.phone;
+            user.address = req.body.address || user.address;
+            user.profilePic = req.body.profilePic !== undefined ? req.body.profilePic : user.profilePic;
 
             const updatedUser = await user.save();
             const populatedUser = await User.findById(updatedUser._id).populate('branchId', 'name city');
@@ -289,6 +295,7 @@ const updateUserProfile = async (req, res) => {
                 role: populatedUser.role,
                 phone: populatedUser.phone,
                 branchId: populatedUser.branchId,
+                profilePic: populatedUser.profilePic,
                 token: generateToken(populatedUser._id),
             };
         } else {
@@ -415,6 +422,7 @@ const resetPassword = async (req, res) => {
             userName: user.userName,
             email: user.email,
             role: user.role,
+            profilePic: user.profilePic,
             token: generateToken(user._id),
         };
     } catch (error) {
