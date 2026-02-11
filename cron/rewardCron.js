@@ -30,8 +30,8 @@ const distributeMonthlyRewards = async () => {
 
             // Maturity Interval: 30 days for Prod, 10 mins for Dev
             const MATURITY_MS = process.env.NODE_ENV === 'development'
-                ? 10 * 60 * 1000
-                : 30 * 24 * 60 * 60 * 1000;
+                ? 1 * 60 * 1000   // 1 minute
+                : 30 * 24 * 60 * 60 * 1000; // 30 days
 
             let processedCount = 0;
 
@@ -139,7 +139,7 @@ const distributeMonthlyRewards = async () => {
 // Schedule: 
 // Development: every 10 minutes
 // Production: every hour (checking for matured individual investments)
-const cronSchedule = process.env.NODE_ENV === 'development' ? '*/5 * * * *' : '0 * * * *';
+const cronSchedule = process.env.NODE_ENV === 'development' ? '*/1 * * * *' : '0 * * * *';
 cron.schedule(cronSchedule, distributeMonthlyRewards);
 
 module.exports = {
