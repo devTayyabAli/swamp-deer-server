@@ -13,7 +13,11 @@ dotenv.config();
 require('./cron/rewardCron');
 
 // Connect to MongoDB
-connectDB();
+connectDB().then(() => {
+    // Initialize Global Investment Plan if it doesn't exist
+    const initializeGlobalPlan = require('./utils/initializePlan');
+    initializeGlobalPlan();
+});
 
 // Ensure uploads directory exists
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -62,6 +66,7 @@ app.use('/api/investors', require('./routes/investorRoutes'));
 app.use('/api/withdrawals', require('./routes/withdrawalRoutes'));
 app.use('/api/rewards', require('./routes/rewardRoutes'));
 app.use('/api/investments', require('./routes/investmentRoutes'));
+app.use('/api/plans', require('./routes/planRoutes'));
 
 // Error Handling Middleware (Simple)
 app.use((err, req, res, next) => {

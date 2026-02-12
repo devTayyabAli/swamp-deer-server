@@ -9,7 +9,7 @@ const {
     checkPhaseTransition,
     checkProfitCap
 } = require('../services/stakeService');
-const { INVESTMENT_CONSTANTS } = require('../config/investmentPlans');
+const { INVESTMENT_CONSTANTS, getActiveConfiguration, getMonthsBeforePhase } = require('../config/investmentPlans');
 const { sendStakingCapReachedEmail, sendAdminCronFailureEmail } = require('../utils/emailService');
 
 /**
@@ -46,19 +46,21 @@ const distributeMonthlyRewards = async () => {
 
                 if (msSinceLastReward < MATURITY_MS) continue;
 
-                // 1. Determine Current Phase Rate
+                // Fetch active configuration for THIS investment context
+                const config = await getActiveConfiguration(investment.user, investment.branchId);
+
+                // 1. Determine Current Phase Rate (Dynamic)
                 let rate = investment.rewardPercentage;
                 if (investment.currentPhase) {
-                    rate = calculateCurrentPhaseRate(investment);
+                    rate = await calculateCurrentPhaseRate(investment);
                 }
 
                 // 2. Calculate Reward Amount
                 const rawRewardAmount = investment.amount * rate;
 
-                // 3. Check Profit Cap (5x Limit)
+                // 3. Check Profit Cap (Dynamic)
                 const capCheck = await checkProfitCap(investment, rawRewardAmount);
                 const rewardAmount = capCheck.allowedAmount;
-                console.log('rewardAmount', rewardAmount);
 
                 if (rewardAmount > 0) {
                     const rewardRecord = await UserStakeReward.create({
@@ -69,7 +71,7 @@ const distributeMonthlyRewards = async () => {
                         description: `Monthly Profit Share - Phase ${investment.currentPhase || 'N/A'}`
                     });
 
-                    // Trigger matching bonus for uplines
+                    // Trigger matching bonus for uplines (Dynamic)
                     await distributeMatchingBonuses(rewardRecord);
 
                     // Update Stake Stats
@@ -80,8 +82,9 @@ const distributeMonthlyRewards = async () => {
                     const productStatus = investment.productStatus || 'without_product';
                     const currentPhase = investment.currentPhase || 1;
 
-                    const { getMonthsBeforePhase } = require('../config/investmentPlans');
-                    const monthsBefore = getMonthsBeforePhase(productStatus, currentPhase);
+                    // getMonthsBeforePhase is now config-aware in stakeService (indirectly)
+                    // but we call it here directly from investmentPlans.js
+                    const monthsBefore = getMonthsBeforePhase(productStatus, currentPhase, config);
                     const monthsInCurrent = investment.monthsCompleted - monthsBefore;
 
                     await checkPhaseTransition(investment, monthsInCurrent);
@@ -89,11 +92,9 @@ const distributeMonthlyRewards = async () => {
                     // Check for Completion (Cap or Time)
                     if (capCheck.isCapReached) {
                         investment.status = 'completed';
-                        console.log(`Investment ${investment._id} COMPLETED (Cap Reached)`);
                         await sendStakingCapReachedEmail(user.email, 'Profit Cap (5x Limit)');
                     } else if (investment.monthsCompleted >= INVESTMENT_CONSTANTS.TOTAL_DURATION_MONTHS) {
                         investment.status = 'completed';
-                        console.log(`Investment ${investment._id} COMPLETED (Time Expired)`);
                         await sendStakingCapReachedEmail(user.email, 'Time Duration (12 Months)');
                     }
 
@@ -114,7 +115,6 @@ const distributeMonthlyRewards = async () => {
             console.error(`Error in ${jobName} (Attempt ${attempts}):`, error);
 
             if (attempts === maxAttempts) {
-                // Log Final Failure after all retries
                 try {
                     await CronLog.create({
                         jobName,
@@ -122,22 +122,17 @@ const distributeMonthlyRewards = async () => {
                         error: error.message,
                         details: `Failed after ${maxAttempts} attempts. Final error: ${error.message}`
                     });
-                    // Send Email to Admin
                     await sendAdminCronFailureEmail(jobName, error.message);
                 } catch (logError) {
                     console.error('Failed to save cron log or send admin email:', logError);
                 }
             } else {
-                // Wait 5 seconds before next attempt
                 await new Promise(res => setTimeout(res, 5000));
             }
         }
     }
 };
 
-// Schedule: 
-// Development: every 10 minutes
-// Production: every hour (checking for matured individual investments)
 const cronSchedule = process.env.NODE_ENV === 'development' ? '*/1 * * * *' : '0 * * * *';
 cron.schedule(cronSchedule, distributeMonthlyRewards);
 
