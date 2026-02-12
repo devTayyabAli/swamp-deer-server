@@ -4,7 +4,7 @@ const UserStakeReward = require('../models/UserStakingReward');
 const mongoose = require('mongoose');
 const RankGiftRequest = require('../models/RankGiftRequest');
 const { calculateBalance } = require('./withdrawalController');
-const { getAllPhases } = require('../config/investmentPlans');
+const { getAllPhases, getActiveConfiguration } = require('../config/investmentPlans');
 
 // @desc    Get dashboard statistics for current user
 // @route   GET /api/investors/dashboard/stats
@@ -161,10 +161,13 @@ const getDashboardStats = async (req, res) => {
         console.log('FINAL Monthly Profit:', monthlyProfit);
         console.log('=== END DEBUG ===');
 
+        // Fetch active configuration for phase calculations
+        const config = await getActiveConfiguration(userId, req.user.branchId);
+
         // Calculate details for ALL active/pending investments
         const activeInvestments = activeSalesForROI.map(sale => {
             const productStatus = sale.productStatus || 'without_product';
-            const phases = getAllPhases(productStatus);
+            const phases = getAllPhases(productStatus, config);
             const monthsCompleted = sale.monthsCompleted || 0;
 
             let currentPhase = 1;

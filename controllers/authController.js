@@ -85,11 +85,11 @@ const authUser = async (req, res) => {
             response.status = 401;
         }
         console.log('=== END DEBUG ===\n');
+        return res.status(response.status).json(response);
     } catch (error) {
         console.error('Login Error:', error);
         response.message = error.message || 'Server Error during login';
         response.status = 500;
-    } finally {
         return res.status(response.status).json(response);
     }
 };
@@ -195,11 +195,11 @@ const registerUser = async (req, res) => {
         } else {
             response.message = 'Invalid user data';
         }
+        return res.status(response.status).json(response);
     } catch (error) {
         console.error('Registration Error:', error);
         response.message = error.message || 'Server Error during registration';
         response.status = 500;
-    } finally {
         return res.status(response.status).json(response);
     }
 };
@@ -255,11 +255,11 @@ const authAdmin = async (req, res) => {
             response.message = 'Invalid email/userName or password';
             response.status = 401;
         }
+        return res.status(response.status).json(response);
     } catch (error) {
         console.error('Admin Login Error:', error);
         response.status = 500;
         response.message = error.message;
-    } finally {
         return res.status(response.status).json(response);
     }
 };
@@ -302,11 +302,11 @@ const updateUserProfile = async (req, res) => {
             response.message = 'User not found';
             response.status = 404;
         }
+        return res.status(response.status).json(response);
     } catch (error) {
         console.error('Update Profile Error:', error);
         response.message = error.message || 'Server Error';
         response.status = 500;
-    } finally {
         return res.status(response.status).json(response);
     }
 };
@@ -330,11 +330,11 @@ const updateUserPassword = async (req, res) => {
             response.message = 'Invalid current password';
             response.status = 401;
         }
+        return res.status(response.status).json(response);
     } catch (error) {
         console.error('Update Password Error:', error);
         response.message = error.message;
         response.status = 500;
-    } finally {
         return res.status(response.status).json(response);
     }
 };
@@ -379,11 +379,11 @@ const forgotPassword = async (req, res) => {
             response.message = 'Email could not be sent';
             response.status = 500;
         }
+        return res.status(response.status).json(response);
     } catch (error) {
         console.error('Forgot Password Error:', error);
         response.message = error.message;
         response.status = 500;
-    } finally {
         return res.status(response.status).json(response);
     }
 };
@@ -425,11 +425,11 @@ const resetPassword = async (req, res) => {
             profilePic: user.profilePic,
             token: generateToken(user._id),
         };
+        return res.status(response.status).json(response);
     } catch (error) {
         console.error('Reset Password Error:', error);
         response.message = error.message;
         response.status = 500;
-    } finally {
         return res.status(response.status).json(response);
     }
 };
@@ -453,11 +453,11 @@ const updateUserStatus = async (req, res) => {
             response.message = 'User not found';
             response.status = 404;
         }
+        return res.status(response.status).json(response);
     } catch (error) {
         console.error('Update Status Error:', error);
         response.message = error.message;
         response.status = 500;
-    } finally {
         return res.status(response.status).json(response);
     }
 };
@@ -502,11 +502,11 @@ const getUsers = async (req, res) => {
             pages: Math.ceil(count / pageSize),
             total: count
         };
+        return res.status(response.status).json(response);
     } catch (error) {
         console.error('Get Users Error:', error);
         response.message = error.message;
         response.status = 500;
-    } finally {
         return res.status(response.status).json(response);
     }
 };
@@ -550,11 +550,11 @@ const updateUser = async (req, res) => {
             response.message = 'User not found';
             response.status = 404;
         }
+        return res.status(response.status).json(response);
     } catch (error) {
         console.error('Update User Error:', error);
         response.message = error.message;
         response.status = 500;
-    } finally {
         return res.status(response.status).json(response);
     }
 };
@@ -602,11 +602,11 @@ const validateField = async (req, res) => {
                 response.status = 200;
             }
         }
+        return res.status(response.status).json(response);
     } catch (error) {
         console.error('Validation Error:', error);
         response.message = error.message;
         response.status = 500;
-    } finally {
         return res.status(response.status).json(response);
     }
 };
@@ -653,12 +653,11 @@ const verifyEmail = async (req, res) => {
             verified: true,
             email: user.email
         };
-
+        return res.status(response.status).json(response);
     } catch (error) {
         console.error('Verify Email Error:', error);
         response.message = error.message;
         response.status = 500;
-    } finally {
         return res.status(response.status).json(response);
     }
 };

@@ -70,6 +70,9 @@ app.use('/api/plans', require('./routes/planRoutes'));
 
 // Error Handling Middleware (Simple)
 app.use((err, req, res, next) => {
+    if (res.headersSent) {
+        return next(err);
+    }
     const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
     res.status(statusCode);
     res.json({
