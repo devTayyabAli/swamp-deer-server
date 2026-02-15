@@ -29,7 +29,7 @@ const calculateBalance = async (userId) => {
 const requestWithdrawal = async (req, res) => {
     let response = ResponseHelper.getResponse(false, "Something went wrong", {}, 400);
     try {
-        const { amount } = req.body;
+        const { amount, method, bankDetails } = req.body;
 
         if (!amount || amount <= 0) {
             response.message = "Invalid amount";
@@ -47,11 +47,23 @@ const requestWithdrawal = async (req, res) => {
         const fee = amount * 0.05;
         const netAmount = amount - fee;
 
-        const withdrawal = await Withdrawal.create({
+        const withdrawalData = {
             userId: req.user._id,
             amount,
-            status: 'pending'
-        });
+            status: 'pending',
+            method: method || 'CASH'
+        };
+
+        if (method === 'BANK' && bankDetails) {
+            withdrawalData.bankDetails = bankDetails;
+
+            // Update user profile with these bank details for future use
+            await User.findByIdAndUpdate(req.user._id, {
+                bankDetails: bankDetails
+            });
+        }
+
+        const withdrawal = await Withdrawal.create(withdrawalData);
 
         response.success = true;
         response.message = "Withdrawal request submitted successfully";
@@ -80,7 +92,7 @@ const getWithdrawals = async (req, res) => {
         const query = req.user.role === 'super_admin' ? {} : { userId: req.user._id };
 
         const withdrawals = await Withdrawal.find(query)
-            .populate('userId', 'name userName email')
+            .populate('userId', 'name userName email phone')
             .sort({ createdAt: -1 });
 
         response.success = true;

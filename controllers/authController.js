@@ -72,6 +72,7 @@ const authUser = async (req, res) => {
                     phone: user.phone,
                     branchId: user.branchId,
                     profilePic: user.profilePic,
+                    bankDetails: user.bankDetails,
                     token: generateToken(user._id),
                 };
             } else {
@@ -249,6 +250,7 @@ const authAdmin = async (req, res) => {
                 phone: user.phone,
                 branchId: user.branchId,
                 profilePic: user.profilePic,
+                bankDetails: user.bankDetails,
                 token: generateToken(user._id),
             };
         } else {
@@ -280,6 +282,7 @@ const updateUserProfile = async (req, res) => {
             user.phone = req.body.phone || user.phone;
             user.address = req.body.address || user.address;
             user.profilePic = req.body.profilePic !== undefined ? req.body.profilePic : user.profilePic;
+            user.bankDetails = req.body.bankDetails || user.bankDetails;
 
             const updatedUser = await user.save();
             const populatedUser = await User.findById(updatedUser._id).populate('branchId', 'name city');
@@ -296,6 +299,7 @@ const updateUserProfile = async (req, res) => {
                 phone: populatedUser.phone,
                 branchId: populatedUser.branchId,
                 profilePic: populatedUser.profilePic,
+                bankDetails: populatedUser.bankDetails,
                 token: generateToken(populatedUser._id),
             };
         } else {
@@ -545,6 +549,7 @@ const updateUser = async (req, res) => {
                 role: populatedUser.role,
                 phone: populatedUser.phone,
                 branchId: populatedUser.branchId,
+                bankDetails: populatedUser.bankDetails,
             };
         } else {
             response.message = 'User not found';

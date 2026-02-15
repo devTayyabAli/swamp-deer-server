@@ -5,7 +5,8 @@ const {
     getRewards,
     claimRankGift,
     getAllRewardRequests,
-    updateRewardRequestStatus
+    updateRewardRequestStatus,
+    getInvestorRewards
 } = require('../controllers/rewardController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
@@ -16,5 +17,6 @@ router.post('/claim', protect, claimRankGift);
 // Admin Routes
 router.get('/requests', protect, admin, getAllRewardRequests);
 router.put('/requests/:id', protect, admin, updateRewardRequestStatus);
+router.get('/investor/:id', protect, admin, getInvestorRewards);
 
 module.exports = router;

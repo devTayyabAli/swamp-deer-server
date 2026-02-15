@@ -16,6 +16,18 @@ const withdrawalSchema = new mongoose.Schema({
         enum: ['pending', 'approved', 'rejected', 'completed'],
         default: 'pending',
     },
+    method: {
+        type: String,
+        enum: ['CASH', 'BANK'],
+        default: 'CASH',
+    },
+    bankDetails: {
+        accountNumber: String,
+        bankName: String,
+        ifscCode: String,
+        accountHolderName: String,
+        branchName: String,
+    },
     transactionId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Transaction',

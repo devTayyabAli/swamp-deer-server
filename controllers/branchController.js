@@ -5,12 +5,33 @@ const Branch = require('../models/Branch');
 // @access  Public (or Private)
 const getBranches = async (req, res) => {
     try {
+        const { startDate, endDate } = req.query;
+
+        // Build sales filter for lookup
+        const salesFilter = { status: 'completed' };
+        if (startDate || endDate) {
+            salesFilter.createdAt = {};
+            if (startDate) salesFilter.createdAt.$gte = new Date(startDate);
+            if (endDate) {
+                const end = new Date(endDate);
+                end.setHours(23, 59, 59, 999);
+                salesFilter.createdAt.$lte = end;
+            }
+        }
+
         const branches = await Branch.aggregate([
             {
                 $lookup: {
                     from: 'sales',
-                    localField: '_id',
-                    foreignField: 'branchId',
+                    let: { branchId: '$_id' },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: { $eq: ['$branchId', '$$branchId'] },
+                                ...salesFilter
+                            }
+                        }
+                    ],
                     as: 'sales'
                 }
             },
@@ -31,7 +52,24 @@ const getBranches = async (req, res) => {
             {
                 $addFields: {
                     totalSalesAmount: { $sum: '$sales.amount' },
-                    linkedInvestorsCount: { $size: { $setUnion: { $ifNull: ['$sales.investorId', []] } } }
+                    totalProfit: {
+                        $reduce: {
+                            input: '$sales',
+                            initialValue: 0,
+                            in: { $add: ['$$value', { $subtract: ['$$this.amount', '$$this.commission'] }] }
+                        }
+                    },
+                    linkedInvestorsCount: {
+                        $size: {
+                            $setUnion: {
+                                $reduce: {
+                                    input: '$sales',
+                                    initialValue: [],
+                                    in: { $concatArrays: ['$$value', [{ $ifNull: ['$$this.investorId', ''] }]] }
+                                }
+                            }
+                        }
+                    }
                 }
             },
             {

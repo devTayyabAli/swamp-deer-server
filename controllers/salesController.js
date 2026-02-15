@@ -23,6 +23,9 @@ const getSales = async (req, res) => {
         if (branchId && !['all branches', 'undefined', 'null'].includes(branchId.toLowerCase())) {
             query.branchId = branchId;
         }
+        if (req.query.investorId) {
+            query.investorId = req.query.investorId;
+        }
     } else if (req.user.role === 'branch_manager') {
         if (req.user.branchId) {
             query.branchId = req.user.branchId;
@@ -63,7 +66,7 @@ const getSales = async (req, res) => {
             $group: {
                 _id: null,
                 totalAmount: { $sum: '$amount' },
-                totalProfit: { $sum: { $subtract: ['$amount', '$commission'] } }
+                totalProfit: { $sum: '$totalProfitEarned' }
             }
         }
     ]);

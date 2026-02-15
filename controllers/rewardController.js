@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const UserStakeReward = require('../models/UserStakingReward');
 const RankGiftRequest = require('../models/RankGiftRequest');
 const Gift = require('../models/Gift');
@@ -114,7 +115,8 @@ const claimRankGift = async (req, res) => {
         // 1. Verify if already claimed
         const existingRequest = await RankGiftRequest.findOne({ userId, rankId });
         if (existingRequest) {
-            return res.status(400).json(ResponseHelper.getResponse(false, 'Reward already claimed or pending for this rank'));
+            let response = ResponseHelper.getResponse(false, 'Reward already claimed or pending for this rank', {}, 400);
+            return res.status(400).json(response);
         }
 
         // 2. Define requirements (must match dashboardController)
@@ -131,7 +133,8 @@ const claimRankGift = async (req, res) => {
 
         const level = levels.find(l => l.id === Number(rankId));
         if (!level) {
-            return res.status(400).json(ResponseHelper.getResponse(false, 'Invalid rank ID'));
+            let response = ResponseHelper.getResponse(false, 'Invalid rank ID', {}, 400);
+            return res.status(400).json(response);
         }
 
         // 3. Verify business volume eligibility
@@ -179,13 +182,15 @@ const claimRankGift = async (req, res) => {
         });
 
         if (directBusinessVolume < level.directReq && totalBusinessVolume < level.totalReq) {
-            return res.status(400).json(ResponseHelper.getResponse(false, 'You have not achieved the business volume required for this reward'));
+            let response = ResponseHelper.getResponse(false, 'You have not achieved the business volume required for this reward', {}, 400);
+            return res.status(400).json(response);
         }
 
         // 4. Find the gift
         const gift = await Gift.findOne({ rankId: level.id });
         if (!gift) {
-            return res.status(404).json(ResponseHelper.getResponse(false, 'Gift configuration not found for this rank'));
+            let response = ResponseHelper.getResponse(false, 'Gift configuration not found for this rank', {}, 404);
+            return res.status(404).json(response);
         }
 
         // 5. Create request
@@ -199,7 +204,7 @@ const claimRankGift = async (req, res) => {
         res.json(ResponseHelper.getResponse(true, 'Reward claim submitted successfully. Admin will review your request.', request));
 
     } catch (error) {
-        res.status(500).json(ResponseHelper.getResponse(false, error.message));
+        res.status(500).json(ResponseHelper.getResponse(false, error.message, {}, 500));
     }
 };
 
@@ -231,7 +236,7 @@ const getAllRewardRequests = async (req, res) => {
             total: count
         }));
     } catch (error) {
-        res.status(500).json(ResponseHelper.getResponse(false, error.message));
+        res.status(500).json(ResponseHelper.getResponse(false, error.message, {}, 500));
     }
 };
 
@@ -244,12 +249,14 @@ const updateRewardRequestStatus = async (req, res) => {
         const requestId = req.params.id;
 
         if (!['approved', 'rejected'].includes(status)) {
-            return res.status(400).json(ResponseHelper.getResponse(false, 'Invalid status'));
+            let response = ResponseHelper.getResponse(false, 'Invalid status', {}, 400);
+            return res.status(400).json(response);
         }
 
         const request = await RankGiftRequest.findById(requestId);
         if (!request) {
-            return res.status(404).json(ResponseHelper.getResponse(false, 'Reward request not found'));
+            let response = ResponseHelper.getResponse(false, 'Reward request not found', {}, 404);
+            return res.status(404).json(response);
         }
 
         request.status = status;
@@ -257,6 +264,68 @@ const updateRewardRequestStatus = async (req, res) => {
         await request.save();
 
         res.json(ResponseHelper.getResponse(true, `Reward request ${status} successfully`, request));
+    } catch (error) {
+        res.status(500).json(ResponseHelper.getResponse(false, error.message, {}, 500));
+    }
+};
+
+// @desc    Get rewards list for a specific user (Admin only)
+// @route   GET /api/rewards/investor/:id
+// @access  Private/Admin
+const getInvestorRewards = async (req, res) => {
+    try {
+        const page = Number(req.query.page) || 1;
+        const limit = Number(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        const { type, startDate, endDate } = req.query;
+        const userId = req.params.id;
+
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(400).json(ResponseHelper.getResponse(false, 'Invalid Investor ID'));
+        }
+
+        const objectId = new mongoose.Types.ObjectId(userId);
+
+        const query = { userId: objectId };
+        if (type) query.type = type;
+
+        // Date Filter
+        if (startDate || endDate) {
+            query.createdAt = {};
+            if (startDate) query.createdAt.$gte = new Date(startDate);
+            if (endDate) query.createdAt.$lte = new Date(endDate);
+        }
+
+        const countPromise = UserStakeReward.countDocuments(query);
+        const rewardsPromise = UserStakeReward.find(query)
+            .populate({
+                path: 'stakeId',
+                select: 'user amount productStatus',
+                populate: { path: 'user', select: 'name userName email' }
+            })
+            .sort({ createdAt: -1 })
+            .limit(limit)
+            .skip(skip);
+
+        const [count, rewards, totalAggregation] = await Promise.all([
+            countPromise,
+            rewardsPromise,
+            UserStakeReward.aggregate([
+                { $match: query },
+                { $group: { _id: null, total: { $sum: '$amount' } } }
+            ])
+        ]);
+
+        const filteredTotal = totalAggregation.length > 0 ? totalAggregation[0].total : 0;
+
+        res.json(ResponseHelper.getResponse(true, 'Investor rewards fetched successfully', {
+            items: rewards,
+            page,
+            pages: Math.ceil(count / limit),
+            total: count,
+            filteredTotal: filteredTotal
+        }));
     } catch (error) {
         res.status(500).json(ResponseHelper.getResponse(false, error.message));
     }
@@ -267,5 +336,6 @@ module.exports = {
     getRewards,
     claimRankGift,
     getAllRewardRequests,
-    updateRewardRequestStatus
+    updateRewardRequestStatus,
+    getInvestorRewards
 };
