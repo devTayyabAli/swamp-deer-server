@@ -234,8 +234,8 @@ const getDashboardStats = async (req, res) => {
             { id: 8, no: '08', name: 'Ambassador', criteria: 'Rs 328.05 CR / 656.1 CR', directReq: 3280500000, totalReq: 6561000000, reward: 'Beautiful Villa or 5 CR Cash', status: 'locked' },
         ];
 
-        // Get existing gift requests
-        const giftRequests = await RankGiftRequest.find({ userId });
+        // Get existing gift requests (sorted by newest first)
+        const giftRequests = await RankGiftRequest.find({ userId }).sort({ createdAt: -1 });
 
         levels.forEach(level => {
             // Calculate progress

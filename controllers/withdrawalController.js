@@ -95,10 +95,27 @@ const getWithdrawals = async (req, res) => {
             .populate('userId', 'name userName email phone')
             .sort({ createdAt: -1 });
 
+        // Calculate summary stats
+        const summary = {
+            totalWithdrawn: 0,
+            totalPending: 0
+        };
+
+        withdrawals.forEach(w => {
+            if (w.status === 'completed' || w.status === 'approved') {
+                summary.totalWithdrawn += w.amount;
+            } else if (w.status === 'pending') {
+                summary.totalPending += w.amount;
+            }
+        });
+
         response.success = true;
         response.message = "Withdrawals retrieved successfully";
         response.status = 200;
-        response.data = withdrawals;
+        response.data = {
+            items: withdrawals,
+            summary
+        };
     } catch (error) {
         console.error('Get Withdrawals Error:', error);
         response.message = error.message;

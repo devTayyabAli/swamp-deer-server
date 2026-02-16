@@ -78,9 +78,10 @@ const getSales = async (req, res) => {
 
     // If admin, show all. If user, show only theirs (logic can be extended)
     const sales = await Sale.find(query)
-        .populate('user', 'id name')
+        .populate('user', 'id name userName')
         .populate('branchId', 'name')
-        .populate('investorId', 'name')
+        .populate('investorId', 'id name userName')
+        .populate('referrerId', 'id name userName')
         .limit(limit)
         .skip(skip)
         .sort({ createdAt: -1 }); // Sort by newest first

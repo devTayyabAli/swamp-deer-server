@@ -112,8 +112,12 @@ const claimRankGift = async (req, res) => {
         const { rankId } = req.body;
         const userId = req.user._id;
 
-        // 1. Verify if already claimed
-        const existingRequest = await RankGiftRequest.findOne({ userId, rankId });
+        // 1. Verify if already claimed (only block if pending or approved)
+        const existingRequest = await RankGiftRequest.findOne({
+            userId,
+            rankId,
+            status: { $in: ['pending', 'approved'] }
+        });
         if (existingRequest) {
             let response = ResponseHelper.getResponse(false, 'Reward already claimed or pending for this rank', {}, 400);
             return res.status(400).json(response);
