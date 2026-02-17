@@ -64,8 +64,8 @@ const getDashboardStats = async (req, res) => {
 
             if (productStatus === 'without_product') {
                 totalDirectBusinessVolume += item.totalAmount;
-                // For "Direct Business" (Without Product) track: User's own + Direct Team
-                if (itemUserId === userId.toString() || directTeamIds.some(id => id.toString() === itemUserId)) {
+                // For "Direct Business" (Without Product) track: ONLY Direct Team (NOT user's own)
+                if (directTeamIds.some(id => id.toString() === itemUserId)) {
                     directBusinessVolume += item.totalAmount;
                 }
             } else {
@@ -280,7 +280,8 @@ const getDashboardStats = async (req, res) => {
                 const itemUserId = item._id.toString();
                 freshTotalBusinessVolume += item.totalAmount;
 
-                if (itemUserId === userId.toString() || directTeamIds.some(id => id.toString() === itemUserId)) {
+                // Only count direct team sales (NOT user's own sales)
+                if (directTeamIds.some(id => id.toString() === itemUserId)) {
                     freshDirectBusinessVolume += item.totalAmount;
                 }
             });
