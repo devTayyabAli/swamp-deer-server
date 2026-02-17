@@ -1,7 +1,10 @@
 const Withdrawal = require('../models/Withdrawal');
 const UserStakeReward = require('../models/UserStakingReward');
 const User = require('../models/User');
+const Transaction = require('../models/Transaction');
 const ResponseHelper = require('../utils/ResponseHelper');
+const { logActivity } = require('../utils/activityLogger');
+const mongoose = require('mongoose');
 
 /**
  * Calculate User Balance
@@ -132,7 +135,7 @@ const updateWithdrawalStatus = async (req, res) => {
     let response = ResponseHelper.getResponse(false, "Something went wrong", {}, 400);
     try {
         const { status } = req.body;
-        const withdrawal = await Withdrawal.findById(req.params.id);
+        const withdrawal = await Withdrawal.findById(req.params.id).populate('user', 'name email');
 
         if (!withdrawal) {
             response.message = "Withdrawal not found";
@@ -140,8 +143,24 @@ const updateWithdrawalStatus = async (req, res) => {
             return res.status(404).json(response);
         }
 
+        const oldStatus = withdrawal.status;
         withdrawal.status = status;
         await withdrawal.save();
+
+        // Log admin activity
+        await logActivity({
+            admin: req.user,
+            action: status === 'approved' ? 'APPROVE_WITHDRAWAL' : 'REJECT_WITHDRAWAL',
+            actionCategory: 'WITHDRAWAL',
+            targetType: 'Withdrawal',
+            targetId: withdrawal._id,
+            targetName: `${withdrawal.user?.name || 'Unknown User'} - Rs ${withdrawal.amount}`,
+            changes: {
+                status: { from: oldStatus, to: status }
+            },
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
 
         response.success = true;
         response.message = `Withdrawal status updated to ${status}`;

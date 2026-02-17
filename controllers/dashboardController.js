@@ -237,17 +237,82 @@ const getDashboardStats = async (req, res) => {
         // Get existing gift requests (sorted by newest first)
         const giftRequests = await RankGiftRequest.find({ userId }).sort({ createdAt: -1 });
 
+        // Get all approved rewards for direct team members (for leg achievement)
+        const directTeamRewards = await RankGiftRequest.find({
+            userId: { $in: directTeamIds },
+            status: 'approved'
+        });
+
+        // Find user's most recent approved reward for fresh sales calculation
+        const lastApprovedReward = await RankGiftRequest.findOne({
+            userId,
+            status: 'approved'
+        }).sort({ approvedAt: -1 });
+
+        const freshSalesStartDate = lastApprovedReward?.approvedAt || null;
+
+        // Calculate fresh sales if there's a previous reward
+        let freshDirectBusinessVolume = directBusinessVolume;
+        let freshTotalBusinessVolume = totalBusinessVolume;
+
+        if (freshSalesStartDate) {
+            // Recalculate business volumes with date filter for fresh sales
+            const freshBusinessAggregation = await Sale.aggregate([
+                {
+                    $match: {
+                        user: { $in: allTeamIds },
+                        status: { $in: ['completed', 'active'] },
+                        createdAt: { $gte: freshSalesStartDate }
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$user',
+                        totalAmount: { $sum: '$amount' }
+                    }
+                }
+            ]);
+
+            freshDirectBusinessVolume = 0;
+            freshTotalBusinessVolume = 0;
+
+            freshBusinessAggregation.forEach(item => {
+                const itemUserId = item._id.toString();
+                freshTotalBusinessVolume += item.totalAmount;
+
+                if (itemUserId === userId.toString() || directTeamIds.some(id => id.toString() === itemUserId)) {
+                    freshDirectBusinessVolume += item.totalAmount;
+                }
+            });
+        }
+
         levels.forEach(level => {
+            // Count how many direct legs have achieved this rank
+            const legsAchieved = directTeamRewards.filter(r => r.rankId === level.id).length;
+            level.legsAchieved = legsAchieved;
+            level.legsRequired = 2;
+
+            // Use fresh sales for progress calculation if there's a previous reward
+            const directVolumeToUse = freshSalesStartDate ? freshDirectBusinessVolume : directBusinessVolume;
+            const totalVolumeToUse = freshSalesStartDate ? freshTotalBusinessVolume : totalBusinessVolume;
+
             // Calculate progress
-            const directProgress = Math.min(100, (directBusinessVolume / level.directReq) * 100);
-            const totalProgress = Math.min(100, (totalBusinessVolume / level.totalReq) * 100);
+            const directProgress = Math.min(100, (directVolumeToUse / level.directReq) * 100);
+            const totalProgress = Math.min(100, (totalVolumeToUse / level.totalReq) * 100);
             level.progress = Math.max(directProgress, totalProgress);
 
-            level.remainingDirect = Math.max(0, level.directReq - directBusinessVolume);
-            level.remainingTotal = Math.max(0, level.totalReq - totalBusinessVolume);
+            level.remainingDirect = Math.max(0, level.directReq - directVolumeToUse);
+            level.remainingTotal = Math.max(0, level.totalReq - totalVolumeToUse);
+
+            // Add fresh sales info
+            level.freshSales = freshSalesStartDate ? {
+                directBusiness: freshDirectBusinessVolume,
+                totalBusiness: freshTotalBusinessVolume,
+                sinceDate: freshSalesStartDate
+            } : null;
 
             // Check if achieved (either direct or total target met)
-            if (directBusinessVolume >= level.directReq || totalBusinessVolume >= level.totalReq) {
+            if (directVolumeToUse >= level.directReq || totalVolumeToUse >= level.totalReq) {
                 level.status = 'achieved';
 
                 // Check if claimed

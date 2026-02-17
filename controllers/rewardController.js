@@ -5,6 +5,7 @@ const Gift = require('../models/Gift');
 const Sale = require('../models/Sale');
 const User = require('../models/User');
 const ResponseHelper = require('../utils/ResponseHelper');
+const { logActivity } = require('../utils/activityLogger');
 
 // @desc    Get reward summary for the current user
 // @route   GET /api/rewards/summary
@@ -141,11 +142,32 @@ const claimRankGift = async (req, res) => {
             return res.status(400).json(response);
         }
 
-        // 3. Verify business volume eligibility
-        // (Similar logic to dashboardController)
+        // 3. Check Leg Achievement Requirement (NEW)
+        // At least 2 direct team members must have achieved this same rank
         const directTeam = await User.find({ upline: userId });
         const directTeamIds = directTeam.map(member => member._id);
 
+        const approvedLegs = await RankGiftRequest.countDocuments({
+            userId: { $in: directTeamIds },
+            rankId: level.id,
+            status: 'approved'
+        });
+
+        if (approvedLegs < 2) {
+            let response = ResponseHelper.getResponse(false, `You need at least 2 direct team members to achieve Rank ${level.id} first. Currently ${approvedLegs}/2 legs achieved.`, {}, 400);
+            return res.status(400).json(response);
+        }
+
+        // 4. Get Fresh Sales Baseline Date (NEW)
+        // Find the user's most recent approved reward to determine baseline date for fresh sales
+        const lastApprovedReward = await RankGiftRequest.findOne({
+            userId,
+            status: 'approved'
+        }).sort({ approvedAt: -1 });
+
+        const freshSalesStartDate = lastApprovedReward?.approvedAt || null;
+
+        // 5. Verify business volume eligibility (with fresh sales filter)
         const getIndirectTeam = async (userIds) => {
             const children = await User.find({ upline: { $in: userIds } });
             if (children.length === 0) return [];
@@ -158,13 +180,19 @@ const claimRankGift = async (req, res) => {
         const indirectTeamIds = indirectTeam.map(member => member._id);
         const allTeamIds = [userId, ...directTeamIds, ...indirectTeamIds];
 
+        // Build sales match criteria with fresh sales date filter
+        const salesMatchCriteria = {
+            user: { $in: allTeamIds },
+            status: { $in: ['completed', 'active'] }
+        };
+
+        // Only count sales AFTER the last approved reward (fresh sales)
+        if (freshSalesStartDate) {
+            salesMatchCriteria.createdAt = { $gte: freshSalesStartDate };
+        }
+
         const businessAggregation = await Sale.aggregate([
-            {
-                $match: {
-                    user: { $in: allTeamIds },
-                    status: { $in: ['completed', 'active'] }
-                }
-            },
+            { $match: salesMatchCriteria },
             {
                 $group: {
                     _id: '$user',
@@ -186,18 +214,19 @@ const claimRankGift = async (req, res) => {
         });
 
         if (directBusinessVolume < level.directReq && totalBusinessVolume < level.totalReq) {
-            let response = ResponseHelper.getResponse(false, 'You have not achieved the business volume required for this reward', {}, 400);
+            const salesType = freshSalesStartDate ? 'fresh sales (since last reward)' : 'total sales';
+            let response = ResponseHelper.getResponse(false, `You have not achieved the business volume required for this reward. You need Rs ${level.directReq.toLocaleString()} in direct ${salesType} OR Rs ${level.totalReq.toLocaleString()} in total ${salesType}.`, {}, 400);
             return res.status(400).json(response);
         }
 
-        // 4. Find the gift
+        // 6. Find the gift
         const gift = await Gift.findOne({ rankId: level.id });
         if (!gift) {
             let response = ResponseHelper.getResponse(false, 'Gift configuration not found for this rank', {}, 404);
             return res.status(404).json(response);
         }
 
-        // 5. Create request
+        // 7. Create request
         const request = await RankGiftRequest.create({
             userId,
             rankId: level.id,
@@ -257,15 +286,37 @@ const updateRewardRequestStatus = async (req, res) => {
             return res.status(400).json(response);
         }
 
-        const request = await RankGiftRequest.findById(requestId);
+        const request = await RankGiftRequest.findById(requestId).populate('user', 'name email').populate('rank', 'name');
         if (!request) {
             let response = ResponseHelper.getResponse(false, 'Reward request not found', {}, 404);
             return res.status(404).json(response);
         }
 
+        const oldStatus = request.status;
         request.status = status;
         request.processedBy = req.user._id;
+
+        // Set approvedAt timestamp when status changes to approved
+        if (status === 'approved') {
+            request.approvedAt = new Date();
+        }
+
         await request.save();
+
+        // Log admin activity
+        await logActivity({
+            admin: req.user,
+            action: status === 'approved' ? 'APPROVE_REWARD' : 'REJECT_REWARD',
+            actionCategory: 'REWARD',
+            targetType: 'RankGiftRequest',
+            targetId: request._id,
+            targetName: `${request.user?.name || 'Unknown User'} - ${request.rank?.name || 'Rank Reward'}`,
+            changes: {
+                status: { from: oldStatus, to: status }
+            },
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
 
         res.json(ResponseHelper.getResponse(true, `Reward request ${status} successfully`, request));
     } catch (error) {

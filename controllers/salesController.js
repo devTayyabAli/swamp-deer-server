@@ -1,5 +1,10 @@
 const Sale = require('../models/Sale');
 const User = require('../models/User');
+const InvestmentPlan = require('../models/InvestmentPlan');
+const UserStakeReward = require('../models/UserStakingReward');
+const Transaction = require('../models/Transaction');
+const { logActivity } = require('../utils/activityLogger');
+const mongoose = require('mongoose');
 const { generateInvestmentDocument } = require('../utils/pdfGenerator');
 const { processCompletedSale } = require('../services/stakeService');
 
@@ -174,12 +179,27 @@ const updateSaleStatus = async (req, res) => {
             return res.status(400).json({ message: 'Invalid status' });
         }
 
-        const sale = await Sale.findById(req.params.id);
+        const sale = await Sale.findById(req.params.id).populate('user', 'name email');
 
         if (sale) {
             const oldStatus = sale.status;
             sale.status = status;
             const updatedSale = await sale.save();
+
+            // Log admin activity
+            await logActivity({
+                admin: req.user,
+                action: status === 'completed' ? 'APPROVE_SALE' : (status === 'rejected' ? 'REJECT_SALE' : 'UPDATE_SALE_STATUS'),
+                actionCategory: 'SALE',
+                targetType: 'Sale',
+                targetId: sale._id,
+                targetName: `${sale.user?.name || 'Unknown User'} - Rs ${sale.amount}`,
+                changes: {
+                    status: { from: oldStatus, to: status }
+                },
+                ipAddress: req.ip,
+                userAgent: req.headers['user-agent']
+            });
 
             // Trigger staking and commission logic if sale is completed
             if (status === 'completed' && oldStatus !== 'completed') {

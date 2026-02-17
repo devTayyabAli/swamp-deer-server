@@ -67,6 +67,7 @@ app.use('/api/withdrawals', require('./routes/withdrawalRoutes'));
 app.use('/api/rewards', require('./routes/rewardRoutes'));
 app.use('/api/investments', require('./routes/investmentRoutes'));
 app.use('/api/plans', require('./routes/planRoutes'));
+app.use('/api/admin/activity-logs', require('./routes/activityLogRoutes'));
 
 // Error Handling Middleware (Simple)
 app.use((err, req, res, next) => {

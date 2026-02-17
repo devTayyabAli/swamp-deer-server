@@ -21,6 +21,10 @@ const rankGiftRequestSchema = new mongoose.Schema(
             enum: ['pending', 'approved', 'rejected'],
             default: 'pending',
         },
+        approvedAt: {
+            type: Date,
+            required: false,
+        },
         processedBy: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",

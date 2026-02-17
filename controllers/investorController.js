@@ -318,13 +318,15 @@ const getInvestorTeam = async (req, res) => {
         // Find all direct downline (users who have this partner as their upline)
         const directDownline = await User.find({ upline: id }).sort({ createdAt: 1 });
 
-        // Find all indirect downline (recursively get downline of downline)
-        const getIndirectDownline = async (userId) => {
+        // Find all indirect downline (recursively get downline of downline) WITH LEVEL TRACKING
+        const getIndirectDownlineWithLevel = async (userId, currentLevel = 1) => {
             const directChildren = await User.find({ upline: userId });
             let allIndirect = [];
 
             for (const child of directChildren) {
-                const childrenOfChild = await getIndirectDownline(child._id);
+                // Add level to the child
+                child.calculatedLevel = currentLevel + 1;
+                const childrenOfChild = await getIndirectDownlineWithLevel(child._id, currentLevel + 1);
                 allIndirect = allIndirect.concat(childrenOfChild);
             }
 
@@ -333,7 +335,9 @@ const getInvestorTeam = async (req, res) => {
 
         let indirectDownline = [];
         for (const directMember of directDownline) {
-            const indirectMembers = await getIndirectDownline(directMember._id);
+            // Direct members are level 1
+            directMember.calculatedLevel = 1;
+            const indirectMembers = await getIndirectDownlineWithLevel(directMember._id, 1);
             indirectDownline = indirectDownline.concat(indirectMembers);
         }
 
@@ -410,10 +414,12 @@ const getInvestorTeam = async (req, res) => {
                 phone: member.phone,
                 role: member.role,
                 amount: salesMap.get(member._id.toString()) || 0,
-                profit: earningsMap.get(member._id.toString()) || 0, // CORRECTED: Now shows earnings from them
+                profit: earningsMap.get(member._id.toString()) || 0,
                 date: member.createdAt,
                 upline: user.name,
-                type: 'direct'
+                uplineId: id,
+                type: 'direct',
+                level: 1 // Direct members are always level 1
             };
         });
 
@@ -427,10 +433,12 @@ const getInvestorTeam = async (req, res) => {
                 phone: member.phone,
                 role: member.role,
                 amount: salesMap.get(member._id.toString()) || 0,
-                profit: earningsMap.get(member._id.toString()) || 0, // CORRECTED: Now shows earnings from them
+                profit: earningsMap.get(member._id.toString()) || 0,
                 date: member.createdAt,
                 upline: 'N/A',
-                type: 'indirect'
+                uplineId: member.upline ? member.upline.toString() : null,
+                type: 'indirect',
+                level: member.calculatedLevel || 2 // Use calculated level or default to 2
             };
         });
 
