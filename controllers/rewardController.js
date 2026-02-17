@@ -142,21 +142,9 @@ const claimRankGift = async (req, res) => {
             return res.status(400).json(response);
         }
 
-        // 3. Check Leg Achievement Requirement (NEW)
-        // At least 2 direct team members must have achieved this same rank
+        // 3. Get team structure for validation
         const directTeam = await User.find({ upline: userId });
         const directTeamIds = directTeam.map(member => member._id);
-
-        const approvedLegs = await RankGiftRequest.countDocuments({
-            userId: { $in: directTeamIds },
-            rankId: level.id,
-            status: 'approved'
-        });
-
-        if (approvedLegs < 2) {
-            let response = ResponseHelper.getResponse(false, `You need at least 2 direct team members to achieve Rank ${level.id} first. Currently ${approvedLegs}/2 legs achieved.`, {}, 400);
-            return res.status(400).json(response);
-        }
 
         // 4. Get Fresh Sales Baseline Date (NEW)
         // Find the user's most recent approved reward to determine baseline date for fresh sales
@@ -167,7 +155,7 @@ const claimRankGift = async (req, res) => {
 
         const freshSalesStartDate = lastApprovedReward?.approvedAt || null;
 
-        // 5. Verify business volume eligibility (with fresh sales filter)
+        // 5. Calculate business volumes (with fresh sales filter)
         const getIndirectTeam = async (userIds) => {
             const children = await User.find({ upline: { $in: userIds } });
             if (children.length === 0) return [];
@@ -178,7 +166,8 @@ const claimRankGift = async (req, res) => {
 
         const indirectTeam = directTeamIds.length > 0 ? await getIndirectTeam(directTeamIds) : [];
         const indirectTeamIds = indirectTeam.map(member => member._id);
-        const allTeamIds = [userId, ...directTeamIds, ...indirectTeamIds];
+        // Only count TEAM sales (exclude user's own sales)
+        const allTeamIds = [...directTeamIds, ...indirectTeamIds];
 
         // Build sales match criteria with fresh sales date filter
         const salesMatchCriteria = {
@@ -208,18 +197,38 @@ const claimRankGift = async (req, res) => {
             const itemUserId = item._id.toString();
             totalBusinessVolume += item.totalAmount;
 
-            if (itemUserId === userId.toString() || directTeamIds.some(id => id.toString() === itemUserId)) {
+            // Only count direct team sales (NOT user's own sales)
+            if (directTeamIds.some(id => id.toString() === itemUserId)) {
                 directBusinessVolume += item.totalAmount;
             }
         });
 
-        if (directBusinessVolume < level.directReq && totalBusinessVolume < level.totalReq) {
+        // 6. Check eligibility: EITHER Leg Achievement OR Sales Target (not both required)
+        // Count approved legs
+        const approvedLegs = await RankGiftRequest.countDocuments({
+            userId: { $in: directTeamIds },
+            rankId: level.id,
+            status: 'approved'
+        });
+
+        const hasEnoughLegs = approvedLegs >= 2;
+        const hasEnoughSales = directBusinessVolume >= level.directReq || totalBusinessVolume >= level.totalReq;
+
+        // User needs EITHER 2 legs OR enough sales
+        if (!hasEnoughLegs && !hasEnoughSales) {
             const salesType = freshSalesStartDate ? 'fresh sales (since last reward)' : 'total sales';
-            let response = ResponseHelper.getResponse(false, `You have not achieved the business volume required for this reward. You need Rs ${level.directReq.toLocaleString()} in direct ${salesType} OR Rs ${level.totalReq.toLocaleString()} in total ${salesType}.`, {}, 400);
+            let response = ResponseHelper.getResponse(
+                false,
+                `You need to meet at least ONE of these requirements:\n` +
+                `Option 1: Have 2 direct legs with approved Rank ${level.id} rewards (currently ${approvedLegs}/2 legs)\n` +
+                `Option 2: Achieve Rs ${level.directReq.toLocaleString()} in direct ${salesType} OR Rs ${level.totalReq.toLocaleString()} in total ${salesType}`,
+                {},
+                400
+            );
             return res.status(400).json(response);
         }
 
-        // 6. Find the gift
+        // 7. Find the gift
         const gift = await Gift.findOne({ rankId: level.id });
         if (!gift) {
             let response = ResponseHelper.getResponse(false, 'Gift configuration not found for this rank', {}, 404);
