@@ -295,7 +295,7 @@ const updateRewardRequestStatus = async (req, res) => {
             return res.status(400).json(response);
         }
 
-        const request = await RankGiftRequest.findById(requestId).populate('user', 'name email').populate('rank', 'name');
+        const request = await RankGiftRequest.findById(requestId).populate('userId', 'name email');
         if (!request) {
             let response = ResponseHelper.getResponse(false, 'Reward request not found', {}, 404);
             return res.status(404).json(response);
@@ -319,7 +319,7 @@ const updateRewardRequestStatus = async (req, res) => {
             actionCategory: 'REWARD',
             targetType: 'RankGiftRequest',
             targetId: request._id,
-            targetName: `${request.user?.name || 'Unknown User'} - ${request.rank?.name || 'Rank Reward'}`,
+            targetName: `${request.userId?.name || 'Unknown User'} - Rank ${request.rankId} Reward`,
             changes: {
                 status: { from: oldStatus, to: status }
             },
