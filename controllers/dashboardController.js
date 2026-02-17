@@ -69,10 +69,15 @@ const getDashboardStats = async (req, res) => {
                     directBusinessVolume += item.totalAmount;
                 }
             } else {
+                // For "With Product" sales
                 totalProductBusinessVolume += item.totalAmount;
-                // For "Total Team Business" (With Product) track: Whole Team
-                totalBusinessVolume += item.totalAmount;
 
+                // For "Total Team Business" - exclude user's own sales
+                if (itemUserId !== userId.toString()) {
+                    totalBusinessVolume += item.totalAmount;
+                }
+
+                // Track indirect business (exclude user AND direct team)
                 if (itemUserId !== userId.toString() && !directTeamIds.some(id => id.toString() === itemUserId)) {
                     indirectBusinessVolume += item.totalAmount;
                 }
@@ -278,7 +283,11 @@ const getDashboardStats = async (req, res) => {
 
             freshBusinessAggregation.forEach(item => {
                 const itemUserId = item._id.toString();
-                freshTotalBusinessVolume += item.totalAmount;
+
+                // Only count TEAM sales for total volume (exclude user's own)
+                if (itemUserId !== userId.toString()) {
+                    freshTotalBusinessVolume += item.totalAmount;
+                }
 
                 // Only count direct team sales (NOT user's own sales)
                 if (directTeamIds.some(id => id.toString() === itemUserId)) {
@@ -312,23 +321,33 @@ const getDashboardStats = async (req, res) => {
                 sinceDate: freshSalesStartDate
             } : null;
 
-            // Check if achieved (either direct or total target met)
-            if (directVolumeToUse >= level.directReq || totalVolumeToUse >= level.totalReq) {
-                level.status = 'achieved';
+            // First, check if this level has an approved reward (takes precedence)
+            const request = giftRequests.find(r => r.rankId === level.id);
 
-                // Check if claimed
-                const request = giftRequests.find(r => r.rankId === level.id);
-                if (request) {
-                    level.claimStatus = request.status; // pending, approved, rejected
-                    if (request.status === 'approved') {
-                        level.isClaimed = true;
+            if (request && request.status === 'approved') {
+                // If reward was approved, always show as achieved
+                level.status = 'achieved';
+                level.claimStatus = 'approved';
+                level.isClaimed = true;
+            } else {
+                // Check if achieved: EITHER sales target met OR 2 legs achieved
+                const salesTargetMet = directVolumeToUse >= level.directReq || totalVolumeToUse >= level.totalReq;
+                const legsRequirementMet = legsAchieved >= 2;
+
+                if (salesTargetMet || legsRequirementMet) {
+                    level.status = 'achieved';
+
+                    // Check claim status for pending/rejected requests
+                    if (request) {
+                        level.claimStatus = request.status; // pending or rejected
+                        level.isClaimed = false;
+                    } else {
+                        level.claimStatus = 'not_claimed';
+                        level.isClaimed = false;
                     }
                 } else {
-                    level.claimStatus = 'not_claimed';
-                    level.isClaimed = false;
+                    level.status = 'locked';
                 }
-            } else {
-                level.status = 'locked';
             }
         });
 
