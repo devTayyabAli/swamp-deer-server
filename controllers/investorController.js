@@ -218,7 +218,7 @@ const getInvestors = async (req, res) => {
         ];
 
         const investors = await User.aggregate(paginatedAggregation);
-        const populatedInvestors = await User.populate(investors, { path: 'upline', select: 'name phone' });
+        const populatedInvestors = await User.populate(investors, { path: 'upline', select: 'name userName phone' });
 
         res.json({
             items: populatedInvestors.map(r => ({ ...r, fullName: r.name })),

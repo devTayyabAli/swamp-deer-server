@@ -29,7 +29,7 @@ const authUser = async (req, res) => {
                 { email: email },
                 { userName: email }
             ]
-        }).populate('branchId', 'name city');
+        }).populate('branchId', 'name city').populate('upline', 'name userName');
 
 
         console.log('User found:', user);
@@ -73,6 +73,7 @@ const authUser = async (req, res) => {
                     branchId: user.branchId,
                     profilePic: user.profilePic,
                     bankDetails: user.bankDetails,
+                    upline: user.upline,
                     token: generateToken(user._id),
                 };
             } else {
@@ -285,7 +286,7 @@ const updateUserProfile = async (req, res) => {
             user.bankDetails = req.body.bankDetails || user.bankDetails;
 
             const updatedUser = await user.save();
-            const populatedUser = await User.findById(updatedUser._id).populate('branchId', 'name city');
+            const populatedUser = await User.findById(updatedUser._id).populate('branchId', 'name city').populate('upline', 'name userName');
 
             response.success = true;
             response.message = 'Profile updated successfully';
@@ -300,6 +301,7 @@ const updateUserProfile = async (req, res) => {
                 branchId: populatedUser.branchId,
                 profilePic: populatedUser.profilePic,
                 bankDetails: populatedUser.bankDetails,
+                upline: populatedUser.upline,
                 token: generateToken(populatedUser._id),
             };
         } else {
@@ -582,6 +584,13 @@ const validateField = async (req, res) => {
             query['userName'] = value; // Search by userName for upline validation
         } else {
             query[field] = value;
+        }
+
+        // Extra validation for userName: no spaces allowed
+        if (field === 'userName' && /\s/.test(value)) {
+            response.message = 'Username cannot contain spaces';
+            response.status = 400;
+            return res.status(400).json(response);
         }
 
         const user = await User.findOne(query);

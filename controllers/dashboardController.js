@@ -115,6 +115,52 @@ const getDashboardStats = async (req, res) => {
             }
         });
 
+        // Get monthly income (current calendar month)
+        const now = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+        const monthlyRewardsAggregation = await UserStakeReward.aggregate([
+            {
+                $match: {
+                    userId: userId,
+                    createdAt: { $gte: monthStart, $lte: monthEnd }
+                }
+            },
+            {
+                $group: {
+                    _id: '$type',
+                    total: { $sum: '$amount' }
+                }
+            }
+        ]);
+
+        let monthlyStakingIncome = 0;
+        let monthlyLevelIncome = 0;
+        let monthlyReferralIncome = 0;
+        let monthlyTotalCommission = 0;
+
+        monthlyRewardsAggregation.forEach(reward => {
+            monthlyTotalCommission += reward.total;
+            if (reward._id === 'staking') monthlyStakingIncome = reward.total;
+            if (reward._id === 'level_income') monthlyLevelIncome = reward.total;
+            if (reward._id === 'direct_income') monthlyReferralIncome = reward.total;
+        });
+
+        // Monthly direct business (without_product sales by direct team this month)
+        const monthlyBusinessAggregation = await Sale.aggregate([
+            {
+                $match: {
+                    user: { $in: directTeamIds },
+                    productStatus: 'without_product',
+                    status: { $in: ['completed', 'active'] },
+                    createdAt: { $gte: monthStart, $lte: monthEnd }
+                }
+            },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const monthlyDirectBusiness = monthlyBusinessAggregation.length > 0 ? monthlyBusinessAggregation[0].total : 0;
+
         // Get investment overview (where user is the investor)
         const investmentAggregation = await Sale.aggregate([
             {
@@ -366,7 +412,14 @@ const getDashboardStats = async (req, res) => {
                 stakingIncome: stakingRewards,
                 referralIncome,
                 levelIncome,
-                availableBalance
+                availableBalance,
+                monthly: {
+                    directBusiness: monthlyDirectBusiness,
+                    stakingIncome: monthlyStakingIncome,
+                    referralIncome: monthlyReferralIncome,
+                    levelIncome: monthlyLevelIncome,
+                    totalCommission: monthlyTotalCommission,
+                }
             },
             teamStats: {
                 totalTeamSize: directTeam.length + indirectTeam.length,
