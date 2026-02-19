@@ -90,22 +90,23 @@ const distributeMonthlyRewards = async () => {
                     await checkPhaseTransition(investment, monthsInCurrent);
 
                     // Check for Completion (Cap or Time)
+                    /*
                     if (capCheck.isCapReached) {
                         investment.status = 'completed';
                         await sendStakingCapReachedEmail(user.email, 'Profit Cap (5x Limit)');
-                    } else if (investment.monthsCompleted >= INVESTMENT_CONSTANTS.TOTAL_DURATION_MONTHS) {
+                    } else */ if (investment.monthsCompleted >= INVESTMENT_CONSTANTS.TOTAL_DURATION_MONTHS) {
                         investment.status = 'completed';
                         await sendStakingCapReachedEmail(user.email, 'Time Duration (12 Months)');
                     }
 
                     await investment.save();
                     processedCount++;
-                } else if (capCheck.isCapReached) {
+                } /* else if (capCheck.isCapReached) {
                     investment.status = 'completed';
                     await investment.save();
                     await sendStakingCapReachedEmail(user.email, 'Profit Cap (5x Limit)');
                     processedCount++;
-                }
+                } */
             }
 
             console.log(`Processed ${processedCount} due investments out of ${activeInvestments.length} active.`);
@@ -133,7 +134,7 @@ const distributeMonthlyRewards = async () => {
     }
 };
 
-const cronSchedule = process.env.NODE_ENV === 'development' ? '*/1 * * * *' : '0 * * * *';
+const cronSchedule = process.env.NODE_ENV === 'development' ? '*/1 * * * *' : '0 0 * * *';
 cron.schedule(cronSchedule, distributeMonthlyRewards);
 
 module.exports = {

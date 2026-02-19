@@ -242,6 +242,8 @@ const checkPhaseTransition = async (sale, monthsCompletedInCurrentPhase) => {
  * Checks if adding reward would exceed profit cap
  */
 const checkProfitCap = async (sale, proposedReward) => {
+    // 5x Profit Cap Disabled Temporarily
+    /*
     const config = await getActiveConfiguration(sale.user, sale.branchId);
     const currentTotal = sale.totalProfitEarned || 0;
     const projectedTotal = currentTotal + proposedReward;
@@ -254,6 +256,7 @@ const checkProfitCap = async (sale, proposedReward) => {
             isCapReached: true
         };
     }
+    */
 
     return {
         allowedAmount: proposedReward,

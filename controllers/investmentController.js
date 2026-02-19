@@ -70,7 +70,7 @@ const getUserStakes = async (req, res) => {
                     ? `${(currentPhaseConfig.rate * 100).toFixed(1)}%`
                     : `${(investment.rewardPercentage * 100).toFixed(1)}%`,
                 remainingProfit: Math.max(0, profitCap - (investment.totalProfitEarned || 0)),
-                isCapReached: (investment.totalProfitEarned || 0) >= profitCap
+                isCapReached: false // Force false as cap is disabled project-wide
             };
         });
 
