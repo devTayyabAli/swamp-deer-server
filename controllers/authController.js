@@ -132,6 +132,9 @@ const registerUser = async (req, res) => {
             const uplineUser = await User.findOne({ userName: upline });
             if (uplineUser) {
                 uplineId = uplineUser._id;
+            } else {
+                response.message = 'Referral ID (Upline) not found';
+                return res.status(400).json(response);
             }
         }
 
@@ -147,6 +150,7 @@ const registerUser = async (req, res) => {
             phone,
             address,
             upline: uplineId,
+            referredBy: uplineId || '69961198d98a549c18389d11', // Default to Super Admin if no upline
             isEmailVerified: !password || !isProduction // Auto-verify if created by admin or not in production
         };
 

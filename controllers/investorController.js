@@ -278,6 +278,7 @@ const createInvestor = async (req, res) => {
         address,
         role: isReferrer ? 'referrer' : 'investor',
         upline: upline || null,
+        referredBy: upline || '69961198d98a549c18389d11', // Default to Super Admin if no upline
         productStatus: productStatus || 'without_product'
     });
 
