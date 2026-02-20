@@ -8,7 +8,7 @@ const getBranches = async (req, res) => {
         const { startDate, endDate } = req.query;
 
         // Build sales filter for lookup
-        const salesFilter = { status: 'completed' };
+        const salesFilter = { status: { $in: ['completed', 'active'] } };
         if (startDate || endDate) {
             salesFilter.createdAt = {};
             if (startDate) salesFilter.createdAt.$gte = new Date(startDate);
@@ -38,6 +38,21 @@ const getBranches = async (req, res) => {
             {
                 $lookup: {
                     from: 'users',
+                    let: { branchId: '$_id' },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: { $eq: ['$branchId', '$$branchId'] },
+                                role: 'investor'
+                            }
+                        }
+                    ],
+                    as: 'linkedInvestors'
+                }
+            },
+            {
+                $lookup: {
+                    from: 'users',
                     localField: 'manager',
                     foreignField: '_id',
                     as: 'manager'
@@ -59,22 +74,13 @@ const getBranches = async (req, res) => {
                             in: { $add: ['$$value', { $subtract: ['$$this.amount', '$$this.commission'] }] }
                         }
                     },
-                    linkedInvestorsCount: {
-                        $size: {
-                            $setUnion: {
-                                $reduce: {
-                                    input: '$sales',
-                                    initialValue: [],
-                                    in: { $concatArrays: ['$$value', [{ $ifNull: ['$$this.investorId', ''] }]] }
-                                }
-                            }
-                        }
-                    }
+                    linkedInvestorsCount: { $size: '$linkedInvestors' }
                 }
             },
             {
                 $project: {
                     sales: 0,
+                    linkedInvestors: 0,
                     'manager.password': 0,
                     'manager.resetPasswordToken': 0,
                     'manager.resetPasswordExpires': 0

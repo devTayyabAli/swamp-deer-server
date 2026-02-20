@@ -14,7 +14,13 @@ const getInvestors = async (req, res) => {
             match.role = isReferrer === 'true' ? 'referrer' : { $in: ['investor', 'sales_rep'] };
         }
 
-        const { startDate, endDate, search } = req.query;
+        const { startDate, endDate, search, branchId } = req.query;
+
+        if (branchId) {
+            match.branchId = new mongoose.Types.ObjectId(branchId);
+        }
+
+
 
         if (search) {
             match.$or = [
@@ -443,6 +449,13 @@ const getInvestorTeam = async (req, res) => {
             };
         });
 
+        // Calculate total rewards for the current user (staking + direct/level income)
+        const totalRewardsAggregation = await UserStakeReward.aggregate([
+            { $match: { userId: new mongoose.Types.ObjectId(id) } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const totalRewardCount = totalRewardsAggregation.length > 0 ? totalRewardsAggregation[0].total : 0;
+
         res.json({
             upline: user.upline ? {
                 _id: user.upline._id,
@@ -456,8 +469,8 @@ const getInvestorTeam = async (req, res) => {
                 fullName: user.name,
                 phone: user.phone,
                 role: user.role,
-                amountInvested: salesMap.get(user._id.toString())?.amount || 0,
-                totalReward: salesMap.get(user._id.toString())?.profit || 0
+                amountInvested: salesMap.get(user._id.toString()) || 0,
+                totalReward: totalRewardCount
             },
             direct: formattedDirect,
             indirect: formattedIndirect,

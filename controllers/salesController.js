@@ -59,10 +59,10 @@ const getSales = async (req, res) => {
 
     const count = await Sale.countDocuments(query);
 
-    // Calculate aggregate totals for the filtered query (excluding rejected sales)
+    // Calculate aggregate totals for the filtered query (only completed and active sales)
     const statsQuery = { ...query };
     if (!statsQuery.status) {
-        statsQuery.status = { $ne: 'rejected' };
+        statsQuery.status = { $in: ['completed', 'active'] };
     }
 
     const stats = await Sale.aggregate([
