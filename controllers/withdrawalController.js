@@ -34,8 +34,8 @@ const requestWithdrawal = async (req, res) => {
     try {
         const { amount, method, bankDetails } = req.body;
 
-        if (!amount || amount <= 0) {
-            response.message = "Invalid amount";
+        if (!amount || amount < 5000) {
+            response.message = "Minimum withdrawal amount is Rs 5000";
             return res.status(400).json(response);
         }
 
@@ -46,9 +46,9 @@ const requestWithdrawal = async (req, res) => {
             return res.status(400).json(response);
         }
 
-        // Apply 5% Withdrawal Fee (Gross)
-        const fee = amount * 0.05;
-        const netAmount = amount - fee;
+        // Remove 5% Withdrawal Fee
+        const fee = 0;
+        const netAmount = amount;
 
         const withdrawalData = {
             userId: req.user._id,
